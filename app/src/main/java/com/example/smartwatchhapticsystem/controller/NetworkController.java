@@ -35,8 +35,8 @@ import retrofit2.converter.gson.GsonConverterFactory;
 public class NetworkController {
     private final NodeRedApiForSunData api;
     private final RequestQueue requestQueue;
-    private final String myIp = "https://b563cf61ebcd.ngrok-free.app";
-    private final String NODE_RED_CONFIG_URL =  myIp + "/get-monitoring-config";
+    private final String myIp = "https://marcella-unguerdoned-ayanna.ngrok-free.dev/webhook";
+    private final String NODE_RED_CONFIG_URL =  myIp + "/monitoring-config";
     private final String NODE_RED_POST_URL = myIp + "/heartRate";
     private final BluetoothConnectionManager bluetoothConnectionManager;
     private Context context;

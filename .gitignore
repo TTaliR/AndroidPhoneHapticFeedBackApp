@@ -13,3 +13,10 @@
 .externalNativeBuild
 .cxx
 local.properties
+.idea/misc.xml
+.idea/material_theme_project_new.xml
+.idea/deploymentTargetSelector.xml
+.idea/copilot.data.migration.ask2agent.xml
+.idea/AndroidProjectSystem.xml
+.idea/deploymentTargetSelector.xml
+.idea/misc.xml
