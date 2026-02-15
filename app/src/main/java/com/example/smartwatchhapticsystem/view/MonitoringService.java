@@ -22,6 +22,7 @@ import androidx.core.app.NotificationCompat;
 import com.example.smartwatchhapticsystem.R;
 import com.example.smartwatchhapticsystem.controller.BluetoothConnectionManager;
 import com.example.smartwatchhapticsystem.controller.LocationController;
+import com.example.smartwatchhapticsystem.controller.LogManager;
 import com.example.smartwatchhapticsystem.controller.NetworkController;
 import com.example.smartwatchhapticsystem.model.LocationData;
 import com.google.android.gms.location.LocationRequest;
@@ -48,12 +49,22 @@ public class MonitoringService extends Service {
         super.onCreate();
         Log.d("MonitoringService", "🚀 Service created");
 
+        // Initialize LogManager
+        LogManager.getInstance().init(this);
+        LogManager.getInstance().log("Service", "Monitoring service started");
+
         bluetoothManager = new BluetoothConnectionManager(this, identifier);
         networkController = new NetworkController(this, bluetoothManager);
         locationController = new LocationController(this);
 
         startForegroundWithNotification();
-        getMonitoringTypeFromNodeRED();  // Starts the core monitoring logic
+
+        // Set initial status
+        LogManager.getInstance().setMonitoringLoading();
+        LogManager.getInstance().setBluetoothDisconnected();
+        LogManager.getInstance().setn8nConnecting();
+
+        getMonitoringTypeFromn8n();  // Starts the core monitoring logic
 
     }
 
@@ -87,10 +98,10 @@ public class MonitoringService extends Service {
     }
 
     /**
-     * Retrieves the current monitoring type from the Node-RED backend and triggers the appropriate action
+     * Retrieves the current monitoring type from the n8n backend and triggers the appropriate action
      * (e.g., heart rate or sun azimuth monitoring). Implements retry logic in case of network failure.
      */
-    private void getMonitoringTypeFromNodeRED() {
+    private void getMonitoringTypeFromn8n() {
         // Step 1: Ensure the network controller is initialized
         if (networkController != null) {
 
@@ -105,15 +116,22 @@ public class MonitoringService extends Service {
 
                     try {
                         Log.d(TAG, "📡 Received monitoringType: " + monitoringType);
+                        LogManager.getInstance().log("n8n", "Received monitoring type: " + monitoringType);
+                        LogManager.getInstance().setn8nConnected();
+                        LogManager.getInstance().setMonitoringType(monitoringType);
 
                         // Step 3: Handle SunAzimuth monitoring
                         if ("SunAzimuth".equals(monitoringType) || "MoonAzimuth".equals(monitoringType)) {
                             if (checkLocationPermissions()) {
                                 Log.d(TAG, "🔁 Permissions granted. Connecting for SunAzimuth or MoonAzimuth...");
+                                LogManager.getInstance().log("Location", "Starting location updates for " + monitoringType);
+                                LogManager.getInstance().setLocationActive();
                                 connectToSmartwatchForMonitoring(monitoringType);
                                 startLocationUpdates();  // Start location tracking for sun position or moon position
                             } else {
                                 Log.w(TAG, "⚠️ Permissions not granted...");
+                                LogManager.getInstance().log("Location", "Location permissions not granted");
+                                LogManager.getInstance().setLocationInactive();
                                 // Optional: You could request location permissions here if needed
                                 // requestLocationPermissions();
                             }
@@ -121,16 +139,19 @@ public class MonitoringService extends Service {
                             // Step 4: Handle HeartRate monitoring
                         } else if ("HeartRate".equals(monitoringType)) {
                             Log.d(TAG, "🔁 Connecting for HeartRate...");
+                            LogManager.getInstance().log("Bluetooth", "Connecting for HeartRate monitoring");
                             connectToSmartwatchForMonitoring(monitoringType);
 
                             // Step 5: Handle unknown types
                         } else {
                             Log.w(TAG, "⚠️ Unknown monitoringType received: " + monitoringType);
+                            LogManager.getInstance().log("Warning", "Unknown monitoring type: " + monitoringType);
+                            LogManager.getInstance().setMonitoringError("Unknown: " + monitoringType);
                         }
 
                     } catch (Exception e) {
                         // Catch unexpected errors to prevent service crash
-                        Log.e(TAG, "❌ Exception in getMonitoringTypeFromNodeRED() for type: " + monitoringType, e);
+                        Log.e(TAG, "❌ Exception in getMonitoringTypeFromn8n() for type: " + monitoringType, e);
                     }
                 }
 
@@ -138,15 +159,20 @@ public class MonitoringService extends Service {
                 @Override
                 public void onError(String errorMessage) {
                     Log.e(TAG, "❌ Network error: " + errorMessage);
+                    LogManager.getInstance().log("n8n", "Connection error: " + errorMessage);
+                    LogManager.getInstance().setn8nDisconnected();
 
                     // Step 6: Retry with exponential backoff (or max retry limit)
                     if (MAX_RETRIES == -1 || currentRetries < MAX_RETRIES) {
                         currentRetries++;
                         Log.w(TAG, "🔁 Retrying to fetch monitoring type (attempt " + currentRetries + ") in " + (RETRY_DELAY_MS / 1000) + "s...");
-                        retryHandler.postDelayed(() -> getMonitoringTypeFromNodeRED(), RETRY_DELAY_MS);
+                        LogManager.getInstance().log("n8n", "Retrying connection (attempt " + currentRetries + "/" + MAX_RETRIES + ")");
+                        retryHandler.postDelayed(() -> getMonitoringTypeFromn8n(), RETRY_DELAY_MS);
                     } else {
                         // Max retry limit reached — abort and notify user
                         Log.e(TAG, "🛑 Max retry limit reached. Aborting monitoring type fetch.");
+                        LogManager.getInstance().log("Error", "Max retries reached. Cannot connect to n8n.");
+                        LogManager.getInstance().setMonitoringError("Connection failed");
                         Toast.makeText(getApplicationContext(), "Error: " + errorMessage + "\nMax retries reached.", Toast.LENGTH_LONG).show();
                     }
                 }
@@ -166,7 +192,7 @@ public class MonitoringService extends Service {
 
     /**
      * Starts location updates using FusedLocationProviderClient.
-     * Sends location data (lat/lon + IDs) to Node-RED on each update.
+     * Sends location data (lat/lon + IDs) to n8n on each update.
      */
     private void startLocationUpdates() {
 
@@ -184,11 +210,13 @@ public class MonitoringService extends Service {
                 double lat = location.getLatitude();
                 double lon = location.getLongitude();
                 System.out.println("Updated Location: Lat=" + lat + ", Lon=" + lon);
+                LogManager.getInstance().log("Location", String.format("Lat=%.6f, Lon=%.6f", lat, lon));
+                LogManager.getInstance().setLocationActive();
 
                 // Step 3: Build a data object that includes lat/lon and device/user IDs
                 LocationData locationData = buildLocationDataWithIDs(lat, lon);
 
-                // Step 4: Send the location data to Node-RED backend
+                // Step 4: Send the location data to n8n backend
                 networkController.sendLocation(locationData, getApplicationContext(),monitoringType);
             }
 
@@ -196,6 +224,8 @@ public class MonitoringService extends Service {
             @Override
             public void onError(String errorMessage) {
                 System.out.println("Location Error: " + errorMessage);
+                LogManager.getInstance().log("Location", "Error: " + errorMessage);
+                LogManager.getInstance().setLocationInactive();
             }
         });
     }
@@ -256,15 +286,21 @@ public class MonitoringService extends Service {
      * @param monitoringType The type of monitoring to activate (e.g., "HeartRate").
      */
     private void connectToSmartwatchForMonitoring(String monitoringType) {
+        LogManager.getInstance().setBluetoothConnecting();
+
         // Step 1: Attempt to get a connected smartwatch device
         BluetoothDevice smartwatch = bluetoothManager.getConnectedDevice();
 
         // If no device is found, retry after a delay
         if (smartwatch == null) {
             Log.e(TAG, "❌ No smartwatch found! Retrying in 3 seconds...");
+            LogManager.getInstance().log("Bluetooth", "No smartwatch found. Retrying...");
+            LogManager.getInstance().setBluetoothDisconnected();
             retryHandler.postDelayed(() -> connectToSmartwatchForMonitoring(monitoringType), RETRY_INTERVAL_MS);
             return;
         }
+
+        LogManager.getInstance().log("Bluetooth", "Found smartwatch: " + smartwatch.getName());
 
         // Step 2: Connect to the smartwatch and define how to handle incoming data or errors
         bluetoothManager.connectToWatch(smartwatch, new BluetoothConnectionManager.OnHeartRateReceived() {
@@ -273,10 +309,12 @@ public class MonitoringService extends Service {
             @Override
             public void onReceived(Map<String, String> data) {
                 Log.d(TAG, "✅ Full data received: " + data.toString());
+                LogManager.getInstance().setBluetoothConnected(smartwatch.getName());
+                LogManager.getInstance().log("Data", "Received: " + data.toString());
 
-                // Step 3: Forward heart rate data to Node-RED (if monitoring type matches)
+                // Step 3: Forward heart rate data to n8n (if monitoring type matches)
                 if ("HeartRate".equalsIgnoreCase(monitoringType)) {
-                    sendHeartRateToNodeRed(data);
+                    sendHeartRateTon8n(data);
                 }
                 // Optional: You could handle other monitoring types here
                 // e.g., else if ("Temperature".equalsIgnoreCase(monitoringType)) { ... }
@@ -289,6 +327,8 @@ public class MonitoringService extends Service {
             @Override
             public void onError(String errorMessage) {
                 Log.e(TAG, errorMessage + " Retrying in 3 seconds...");
+                LogManager.getInstance().log("Bluetooth", "Error: " + errorMessage);
+                LogManager.getInstance().setBluetoothDisconnected();
                 // Retry connection after a delay
                 retryHandler.postDelayed(() -> connectToSmartwatchForMonitoring(monitoringType), RETRY_INTERVAL_MS);
             }
@@ -296,12 +336,12 @@ public class MonitoringService extends Service {
     }
 
     /**
-     * Sends parsed heart rate data to the Node-RED server using the network controller.
+     * Sends parsed heart rate data to the n8n server using the network controller.
      *
      * @param data A map containing parsed data (e.g., heart rate value, user/device IDs).
      */
-    private void sendHeartRateToNodeRed(Map<String, String> data) {
-        networkController.sendHeartRateToNodeRed(data);
+    private void sendHeartRateTon8n(Map<String, String> data) {
+        networkController.sendHeartRateTon8n(data);
     }
 
 
@@ -337,6 +377,7 @@ public class MonitoringService extends Service {
     public void onDestroy() {
         super.onDestroy();
         Log.d("MonitoringService", "🔴 Service stopped");
+        LogManager.getInstance().log("Service", "Monitoring service stopped");
 
         // Step 1: Stop any pending retries for reconnecting or polling
         retryHandler.removeCallbacksAndMessages(null);
@@ -344,11 +385,13 @@ public class MonitoringService extends Service {
         // Step 2: Disconnect from the smartwatch if connected
         if (bluetoothManager != null) {
             bluetoothManager.disconnect();
+            LogManager.getInstance().setBluetoothDisconnected();
         }
 
         // Step 3: Stop location updates to save battery and resources
         if (locationController != null) {
             locationController.stopLocationUpdates();
+            LogManager.getInstance().setLocationInactive();
         }
 
         // Any additional cleanup (e.g., closing database, stopping sensors) can go here

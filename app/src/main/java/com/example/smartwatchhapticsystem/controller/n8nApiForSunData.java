@@ -8,7 +8,7 @@ import retrofit2.http.Body;
 import retrofit2.http.GET;
 import retrofit2.http.POST;
 
-public interface NodeRedApiForSunData {
+public interface n8nApiForSunData {
 
 
     @POST("/sun-data")

@@ -30,14 +30,14 @@ import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
 /**
- * NetworkController: Handles communication with Node-RED
+ * NetworkController: Handles communication with n8n
  */
 public class NetworkController {
-    private final NodeRedApiForSunData api;
+    private final n8nApiForSunData api;
     private final RequestQueue requestQueue;
     private final String myIp = "https://marcella-unguerdoned-ayanna.ngrok-free.dev/webhook";
-    private final String NODE_RED_CONFIG_URL =  myIp + "/monitoring-config";
-    private final String NODE_RED_POST_URL = myIp + "/heartRate";
+    private final String n8n_CONFIG_URL =  myIp + "/monitoring-config";
+    private final String n8n_POST_URL = myIp + "/heartRate";
     private final BluetoothConnectionManager bluetoothConnectionManager;
     private Context context;
 
@@ -54,7 +54,7 @@ public class NetworkController {
                 .baseUrl(myIp + "/")
                 .addConverterFactory(GsonConverterFactory.create())
                 .build();
-        api = retrofit.create(NodeRedApiForSunData.class);
+        api = retrofit.create(n8nApiForSunData.class);
 
         // Initialize Volley RequestQueue
         requestQueue = Volley.newRequestQueue(context);
@@ -64,10 +64,10 @@ public class NetworkController {
 
 
     /**
-     * Get Monitoring Type ( SunAzimuth or HeartRate) from Node-RED.
+     * Get Monitoring Type ( SunAzimuth or HeartRate) from n8n.
      */
     /**
-     * Makes an HTTP GET request to the Node-RED backend to fetch the current monitoring type.
+     * Makes an HTTP GET request to the n8n backend to fetch the current monitoring type.
      * The expected response format is a JSON object containing a key "monitoringType"
      * with a value like "HeartRate" or "SunAzimuth".
      *
@@ -78,10 +78,10 @@ public class NetworkController {
      */
     public void getMonitoringType(OnMonitoringTypeReceived listener) {
 
-        // Step 1: Create a GET request using Volley to the Node-RED configuration endpoint
+        // Step 1: Create a GET request using Volley to the n8n configuration endpoint
         JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(
                 Request.Method.GET,                 // HTTP GET method
-                NODE_RED_CONFIG_URL,               // The URL to fetch monitoring type from
+                n8n_CONFIG_URL,               // The URL to fetch monitoring type from
                 null,                              // No body required for GET request
                 new Response.Listener<JSONObject>() {
                     // Called when the server responds with a valid JSON
@@ -137,7 +137,7 @@ public class NetworkController {
 
 
     /**
-     * Sends location data (latitude, longitude, and device/user IDs) to the Node-RED backend
+     * Sends location data (latitude, longitude, and device/user IDs) to the n8n backend
      * for SunAzimuth monitoring. If valid, triggers vibration feedback based on server response.
      *
      * @param locationData The LocationData object containing coordinates and identifiers.
@@ -218,13 +218,13 @@ public class NetworkController {
 
 
     /**
-     * Sends a map of heart rate data to a Node-RED server for processing.
+     * Sends a map of heart rate data to a n8n server for processing.
      * Receives feedback parameters (vibration settings) from the server and triggers a vibration
      * command via Bluetooth if the response is valid.
      *
      * @param data A map containing heart rate data (e.g., value, user ID, watch ID, android ID).
      */
-    public void sendHeartRateToNodeRed(Map<String, String> data) {
+    public void sendHeartRateTon8n(Map<String, String> data) {
         // Step 1: Ensure the request queue has been initialized
         if (requestQueue == null) {
             Log.e("NetworkController", "❌ RequestQueue is not initialized!");
@@ -233,17 +233,17 @@ public class NetworkController {
 
         // Step 2: Convert the heart rate data (Map) into a JSON object for POST body
         JSONObject jsonBody = new JSONObject(data);
-        Log.d("NetworkController", "📤 Sending to Node-RED: " + jsonBody.toString());
+        Log.d("NetworkController", "📤 Sending to n8n: " + jsonBody.toString());
 
-        // Step 3: Prepare a JsonObjectRequest to send the data to Node-RED via HTTP POST
+        // Step 3: Prepare a JsonObjectRequest to send the data to n8n via HTTP POST
         final JsonObjectRequest[] jsonObjectRequest = new JsonObjectRequest[1]; // Use array to allow inner class reuse
 
         jsonObjectRequest[0] = new JsonObjectRequest(
                 Request.Method.POST,           // HTTP method: POST
-                NODE_RED_POST_URL,             // URL to send heart rate data to
+                n8n_POST_URL,             // URL to send heart rate data to
                 jsonBody,                      // JSON body to send
                 response -> {  // Success callback
-                    Log.d("NetworkController", "✅ Response from Node-RED: " + response.toString());
+                    Log.d("NetworkController", "✅ Response from n8n: " + response.toString());
 
                     // Step 4: Extract vibration feedback parameters from the JSON response
                     int intensity = response.optInt("intensity", 0);
@@ -259,7 +259,7 @@ public class NetworkController {
                     }
                 },
                 error -> {  // Error callback
-                    Log.e("NetworkController", "❌ Error sending to Node-RED: " + error.toString());
+                    Log.e("NetworkController", "❌ Error sending to n8n: " + error.toString());
 
                     // Log additional HTTP status if available
                     if (error.networkResponse != null) {
