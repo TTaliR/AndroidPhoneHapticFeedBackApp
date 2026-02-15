@@ -285,6 +285,7 @@ public class MonitoringService extends Service {
      *
      * @param monitoringType The type of monitoring to activate (e.g., "HeartRate").
      */
+    @SuppressLint("MissingPermission")
     private void connectToSmartwatchForMonitoring(String monitoringType) {
         LogManager.getInstance().setBluetoothConnecting();
 
@@ -314,7 +315,7 @@ public class MonitoringService extends Service {
 
                 // Step 3: Forward heart rate data to n8n (if monitoring type matches)
                 if ("HeartRate".equalsIgnoreCase(monitoringType)) {
-                    sendHeartRateTon8n(data);
+                    sendHeartRateToN8n(data);
                 }
                 // Optional: You could handle other monitoring types here
                 // e.g., else if ("Temperature".equalsIgnoreCase(monitoringType)) { ... }
@@ -340,7 +341,7 @@ public class MonitoringService extends Service {
      *
      * @param data A map containing parsed data (e.g., heart rate value, user/device IDs).
      */
-    private void sendHeartRateTon8n(Map<String, String> data) {
+    private void sendHeartRateToN8n(Map<String, String> data) {
         networkController.sendHeartRateTon8n(data);
     }
 
