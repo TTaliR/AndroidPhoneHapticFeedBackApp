@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="status_header">סטטוס חיבור</string>
+    <string name="status_connected">מחובר</string>
+    <string name="status_disconnected">מנותק</string>
+    <string name="status_connecting">מתחבר...</string>
+    <string name="status_active">פעיל</string>
+    <string name="status_inactive">לא פעיל</string>
+    <string name="status_loading">טוען...</string>
+    <string name="status_error">שגיאה</string>
+    <string name="clear_logs">ניקוי הכל</string>
+    <string name="logs_placeholder">ממתין</string>
+</resources>
