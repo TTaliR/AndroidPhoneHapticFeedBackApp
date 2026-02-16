@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.bluetooth.BluetoothDevice;
 import android.content.Intent;
@@ -86,14 +87,25 @@ public class MonitoringService extends Service {
             manager.createNotificationChannel(channel);
         }
 
-        // Step 2: Build the actual notification that will be shown to the user
+        // Step 2: Create PendingIntent for the "End Monitoring" action button
+        Intent stopIntent = new Intent(this, StopMonitoringReceiver.class);
+        stopIntent.setAction(StopMonitoringReceiver.ACTION_STOP_MONITORING);
+        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(
+                this,
+                0,
+                stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        // Step 3: Build the actual notification that will be shown to the user
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Smartwatch Monitoring")        // Title of the notification
                 .setContentText("Running in background...")      // Subtext/description
                 .setSmallIcon(R.drawable.ic_launcher_foreground) // Small icon in status bar
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "End Monitoring", stopPendingIntent) // Action button
                 .build();
 
-        // Step 3: Promote this service to foreground status by showing the notification
+        // Step 4: Promote this service to foreground status by showing the notification
         startForeground(1, notification);  // Must be called within 5 seconds of starting the service
     }
 

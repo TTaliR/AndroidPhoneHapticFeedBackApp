@@ -78,6 +78,15 @@
             android:foregroundServiceType="location|connectedDevice"
             android:exported="false"/>
 
+        <!-- Receiver for stopping the monitoring service from notification -->
+        <receiver
+            android:name=".view.StopMonitoringReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.smartwatchhapticsystem.STOP_MONITORING" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

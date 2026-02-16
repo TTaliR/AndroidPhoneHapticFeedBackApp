@@ -25,5 +25,6 @@
     <!-- Logs Section -->
     <string name="logs_header" translatable="false">Activity Logs</string>
     <string name="clear_logs">Clear All</string>
+    <string name="retry_connection">Retry Connection</string>
     <string name="logs_placeholder">Waiting for events…</string>
 </resources>

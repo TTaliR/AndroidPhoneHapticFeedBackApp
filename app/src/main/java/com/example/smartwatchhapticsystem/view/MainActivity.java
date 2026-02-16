@@ -50,6 +50,7 @@ public class MainActivity extends AppCompatActivity {
     private ScrollView logsScrollView;
     private TextView tvLogs;
     private Button btnClearLogs;
+    private Button btnRetryConnection;
 
     // Handlers and formatters
     private final Handler timeHandler = new Handler(Looper.getMainLooper());
@@ -148,10 +149,12 @@ public class MainActivity extends AppCompatActivity {
         logsScrollView = findViewById(R.id.logsScrollView);
         tvLogs = findViewById(R.id.tvLogs);
         btnClearLogs = findViewById(R.id.btnClearLogs);
+        btnRetryConnection = findViewById(R.id.btnRetryConnection);
     }
 
     private void setupClickListeners() {
         btnClearLogs.setOnClickListener(v -> clearLogs());
+        btnRetryConnection.setOnClickListener(v -> retryConnection());
     }
 
     private void updateTime() {
@@ -182,6 +185,21 @@ public class MainActivity extends AppCompatActivity {
         logsBuilder.setLength(0);
         tvLogs.setText(R.string.logs_placeholder);
         LogManager.getInstance().log("App", "Logs cleared");
+    }
+
+    private void retryConnection() {
+        LogManager.getInstance().log("App", "Retrying connection...");
+
+        // Stop the existing service
+        Intent stopIntent = new Intent(this, MonitoringService.class);
+        stopService(stopIntent);
+
+        // Restart the service after a brief delay to ensure clean shutdown
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            Intent startIntent = new Intent(this, MonitoringService.class);
+            startForegroundService(startIntent);
+            LogManager.getInstance().log("App", "Service restarted");
+        }, 500);
     }
 
     private void updateStatusUI(String statusType, String statusValue, int state) {
