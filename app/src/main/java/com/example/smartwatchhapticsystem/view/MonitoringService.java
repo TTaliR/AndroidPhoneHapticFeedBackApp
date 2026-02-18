@@ -1,4 +1,5 @@
 package com.example.smartwatchhapticsystem.view;
+
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Notification;
@@ -10,16 +11,16 @@ import android.bluetooth.BluetoothDevice;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
-import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
+
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
+
 import com.example.smartwatchhapticsystem.R;
 import com.example.smartwatchhapticsystem.controller.BluetoothConnectionManager;
 import com.example.smartwatchhapticsystem.controller.LocationController;
@@ -28,6 +29,7 @@ import com.example.smartwatchhapticsystem.controller.NetworkController;
 import com.example.smartwatchhapticsystem.model.LocationData;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.Priority;
+
 import java.util.Map;
 
 public class MonitoringService extends Service {
@@ -35,7 +37,6 @@ public class MonitoringService extends Service {
     private final Handler retryHandler = new Handler(Looper.getMainLooper());
     private final int RETRY_INTERVAL_MS = 3000; // 3 seconds
     private static final int RETRY_DELAY_MS = 500; // Retry every 5 seconds
-
     private static final int MAX_RETRIES = 8;       // Optional: set to -1 for unlimited
     private int currentRetries = 0;
     private LocationController locationController;
@@ -44,6 +45,8 @@ public class MonitoringService extends Service {
     private static final String TAG = "MainActivity";
     private String monitoringType = "";
     private String identifier = "Android-50"; // Example : Android-42
+    private long lastSensorSendTime = 0;
+    private static final long SENSOR_THROTTLE_MS = 1000; // 1 second interval (1Hz) for all watch sensor data
 
     @Override
     public void onCreate() {
@@ -229,7 +232,7 @@ public class MonitoringService extends Service {
                 LocationData locationData = buildLocationDataWithIDs(lat, lon);
 
                 // Step 4: Send the location data to n8n backend
-                networkController.sendLocation(locationData, getApplicationContext(),monitoringType);
+                networkController.sendLocation(locationData, getApplicationContext(), monitoringType);
             }
 
             // Callback for handling errors in location updates
@@ -318,19 +321,27 @@ public class MonitoringService extends Service {
         // Step 2: Connect to the smartwatch and define how to handle incoming data or errors
         bluetoothManager.connectToWatch(smartwatch, new BluetoothConnectionManager.OnHeartRateReceived() {
 
-            // Callback triggered when valid heart rate data is received
+            // Callback triggered when valid sensor data is received from the watch
             @Override
             public void onReceived(Map<String, String> data) {
+                long currentTime = System.currentTimeMillis();
                 Log.d(TAG, "✅ Full data received: " + data.toString());
                 LogManager.getInstance().setBluetoothConnected(smartwatch.getName());
                 LogManager.getInstance().log("Data", "Received: " + data.toString());
 
-                // Step 3: Forward heart rate data to n8n (if monitoring type matches)
-                if ("HeartRate".equalsIgnoreCase(monitoringType)) {
-                    sendHeartRateToN8n(data);
+                // Step 3: Throttle all watch sensor data to 1Hz (1 second intervals)
+                if (currentTime - lastSensorSendTime >= SENSOR_THROTTLE_MS) {
+                    lastSensorSendTime = currentTime;
+                    Log.d(TAG, "✅ Sending Data (Throttled at 1Hz): " + data.toString());
+
+                    // Dispatch based on monitoring type
+                    if ("HeartRate".equalsIgnoreCase(monitoringType)) {
+                        sendHeartRateToN8n(data);
+                    }
+                    // Future sensor types can be added here:
+                    // else if ("Temperature".equalsIgnoreCase(monitoringType)) { sendTemperatureToN8n(data); }
+                    // else if ("SpO2".equalsIgnoreCase(monitoringType)) { sendSpO2ToN8n(data); }
                 }
-                // Optional: You could handle other monitoring types here
-                // e.g., else if ("Temperature".equalsIgnoreCase(monitoringType)) { ... }
 
                 // Step 4: Stop retry attempts now that communication is successful
                 retryHandler.removeCallbacksAndMessages(null);
@@ -360,7 +371,7 @@ public class MonitoringService extends Service {
 
     /**
      * Called when the system starts the service using startService() or startForegroundService().
-     *
+     * <p>
      * This is where you can initialize runtime logic or process data passed via the intent.
      * Returning START_STICKY means the service will automatically restart if it's killed by the system.
      *
@@ -383,7 +394,7 @@ public class MonitoringService extends Service {
 
     /**
      * Called when the service is being destroyed, either by the system or manually via stopService().
-     *
+     * <p>
      * This is where you clean up any ongoing tasks, threads, or resources to avoid memory leaks.
      */
     @Override
@@ -413,7 +424,7 @@ public class MonitoringService extends Service {
     /**
      * Called when the app's task is removed from the "Recent Apps" screen (i.e., swiped away).
      * This is your opportunity to perform final cleanup before the system kills the process.
-     *
+     * <p>
      * This is especially useful for foreground/background services to stop them gracefully
      * when the user force-closes the app.
      *
