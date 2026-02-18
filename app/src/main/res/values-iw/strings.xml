@@ -9,5 +9,6 @@
     <string name="status_loading">טוען...</string>
     <string name="status_error">שגיאה</string>
     <string name="clear_logs">ניקוי הכל</string>
+    <string name="retry_connection">התחברות מחדש</string>
     <string name="logs_placeholder">ממתין</string>
 </resources>
