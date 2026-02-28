@@ -107,9 +107,9 @@ public class MonitoringService extends Service {
                         Log.d(TAG, "📡 Received monitoringType: " + monitoringType);
 
                         // Step 3: Handle SunAzimuth monitoring
-                        if ("SunAzimuth".equals(monitoringType) || "MoonAzimuth".equals(monitoringType)) {
+                        if ("SunAzimuth".equals(monitoringType) || "MoonAzimuth".equals(monitoringType) || "Pollution".equals(monitoringType)) {
                             if (checkLocationPermissions()) {
-                                Log.d(TAG, "🔁 Permissions granted. Connecting for SunAzimuth or MoonAzimuth...");
+                                Log.d(TAG, "🔁 Permissions granted. Connecting for "+ monitoringType +"...");
                                 connectToSmartwatchForMonitoring(monitoringType);
                                 startLocationUpdates();  // Start location tracking for sun position or moon position
                             } else {
