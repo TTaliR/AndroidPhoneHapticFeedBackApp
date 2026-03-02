@@ -164,6 +164,10 @@ public class NetworkController {
             call = api.sendSunLocation(locationData);
         } else if ("MoonAzimuth".equals(monitoringType)) {
             call = api.sendMoonLocation(locationData);
+        } else if ("Pollution".equals(monitoringType)) {
+            call = api.sendPollutionLocation(locationData);
+        } else if ("Temperature".equals(monitoringType)) {
+            call = api.sendTemperatureLocation(locationData);
         }
 
         if (call == null) {

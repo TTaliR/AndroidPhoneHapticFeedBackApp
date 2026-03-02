@@ -17,5 +17,9 @@ public interface n8nApiForSunData {
     @POST("/moon-data")
     Call<JsonObject> sendMoonLocation(@Body LocationData locationData);
 
+    @POST("/pollution-data")
+    Call<JsonObject> sendPollutionLocation(@Body LocationData locationData);
 
+    @POST("/temperature-data")
+    Call<JsonObject> sendTemperatureLocation(@Body LocationData locationData);
 }

@@ -131,8 +131,16 @@ public class MonitoringService extends Service {
                         LogManager.getInstance().setn8nConnected();
                         LogManager.getInstance().setMonitoringType(monitoringType);
 
-                        // Step 3: Handle SunAzimuth monitoring
-                        if ("SunAzimuth".equals(monitoringType) || "MoonAzimuth".equals(monitoringType) || "Pollution".equals(monitoringType)) {
+                        // Handle heart rate monitoring (no location needed)
+                        if ("HeartRate".equals(monitoringType)) {
+                            Log.d(TAG, "🔁 Connecting for HeartRate...");
+                            LogManager.getInstance().log("Bluetooth", "Connecting for HeartRate monitoring");
+                            connectToSmartwatchForMonitoring(monitoringType);
+
+                            // Handle API monitoring (requesting location)
+                            // currently should catch all non-heart rate monitoring types until we think of something better  --liran
+                        } else if ( !monitoringType.isEmpty()/*"SunAzimuth".equals(monitoringType) || "MoonAzimuth".equals(monitoringType) || "Pollution".equals(monitoringType)*/) {
+
                             if (checkLocationPermissions()) {
                                 Log.d(TAG, "🔁 Permissions granted. Connecting for "+ monitoringType +"...");
                                 LogManager.getInstance().log("Location", "Starting location updates for " + monitoringType);
@@ -146,14 +154,7 @@ public class MonitoringService extends Service {
                                 // Optional: You could request location permissions here if needed
                                 // requestLocationPermissions();
                             }
-
-                            // Step 4: Handle HeartRate monitoring
-                        } else if ("HeartRate".equals(monitoringType)) {
-                            Log.d(TAG, "🔁 Connecting for HeartRate...");
-                            LogManager.getInstance().log("Bluetooth", "Connecting for HeartRate monitoring");
-                            connectToSmartwatchForMonitoring(monitoringType);
-
-                            // Step 5: Handle unknown types
+                            // Handle unknown types
                         } else {
                             Log.w(TAG, "⚠️ Unknown monitoringType received: " + monitoringType);
                             LogManager.getInstance().log("Warning", "Unknown monitoring type: " + monitoringType);
