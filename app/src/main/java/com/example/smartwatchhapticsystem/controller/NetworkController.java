@@ -15,13 +15,14 @@ import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
 import com.example.smartwatchhapticsystem.model.LocationData;
-import com.google.gson.JsonElement;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import retrofit2.Call;
@@ -33,7 +34,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
  * NetworkController: Handles communication with n8n
  */
 public class NetworkController {
-    private final n8nApiForSunData api;
+    private final n8nApis api;
     private final RequestQueue requestQueue;
     private final String myIp = "https://marcella-unguerdoned-ayanna.ngrok-free.dev/webhook";
     private final String n8n_CONFIG_URL =  myIp + "/monitoring-config";
@@ -54,7 +55,7 @@ public class NetworkController {
                 .baseUrl(myIp + "/")
                 .addConverterFactory(GsonConverterFactory.create())
                 .build();
-        api = retrofit.create(n8nApiForSunData.class);
+        api = retrofit.create(n8nApis.class);
 
         // Initialize Volley RequestQueue
         requestQueue = Volley.newRequestQueue(context);
@@ -312,5 +313,53 @@ public class NetworkController {
     public interface OnMonitoringTypeReceived {
         void onReceived(String monitoringType);
         void onError(String errorMessage);
+    }
+
+    /**
+     * Listener Interface for Use Cases
+     */
+    public interface OnUseCasesReceived {
+        void onReceived(List<String> useCases);
+        void onError(String errorMessage);
+    }
+
+    /**
+     * Fetches the list of available use cases from n8n backend.
+     * Parses the JSON array response and extracts the "name" field from each use case object.
+     *
+     * @param listener A callback interface to receive either the list of use case names or an error message.
+     */
+    public void getUseCases(OnUseCasesReceived listener) {
+        Call<JsonArray> call = api.getUseCases();
+
+        call.enqueue(new Callback<JsonArray>() {
+            @Override
+            public void onResponse(@NonNull Call<JsonArray> call, @NonNull retrofit2.Response<JsonArray> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    JsonArray jsonArray = response.body();
+                    List<String> useCaseNames = new ArrayList<>();
+
+                    // Extract the "name" field from each use case object
+                    for (int i = 0; i < jsonArray.size(); i++) {
+                        JsonObject useCase = jsonArray.get(i).getAsJsonObject();
+                        if (useCase.has("name") && !useCase.get("name").isJsonNull()) {
+                            useCaseNames.add(useCase.get("name").getAsString());
+                        }
+                    }
+
+                    Log.d("NetworkController", "✅ Use cases received: " + useCaseNames.toString());
+                    listener.onReceived(useCaseNames);
+                } else {
+                    Log.e("NetworkController", "❌ Failed to fetch use cases. Response Code: " + response.code());
+                    listener.onError("Failed to fetch use cases. Response Code: " + response.code());
+                }
+            }
+
+            @Override
+            public void onFailure(@NonNull Call<JsonArray> call, @NonNull Throwable t) {
+                Log.e("NetworkController", "❌ Network Error fetching use cases: " + t.getMessage());
+                listener.onError("Network Error: " + t.getMessage());
+            }
+        });
     }
 }

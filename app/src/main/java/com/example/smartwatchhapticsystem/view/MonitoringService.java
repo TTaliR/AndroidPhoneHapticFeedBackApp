@@ -26,6 +26,10 @@ import com.example.smartwatchhapticsystem.controller.NetworkController;
 import com.example.smartwatchhapticsystem.model.LocationData;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.Priority;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 public class MonitoringService extends Service {
@@ -43,6 +47,11 @@ public class MonitoringService extends Service {
     private String identifier = "Android-50"; // Example : Android-42
     private long lastSensorSendTime = 0;
     private static final long SENSOR_THROTTLE_MS = 1000; // 1 second interval (1Hz) for all watch sensor data
+
+    // Cached use cases with hardcoded fallback list
+    private List<String> cachedUseCases = new ArrayList<>(Arrays.asList(
+            "HeartRate", "SunAzimuth", "MoonAzimuth", "Pollution"
+    ));
 
     @Override
     public void onCreate() {
@@ -64,7 +73,8 @@ public class MonitoringService extends Service {
         LogManager.getInstance().setBluetoothDisconnected();
         LogManager.getInstance().setn8nConnecting();
 
-        getMonitoringTypeFromn8n();  // Starts the core monitoring logic
+        // First fetch available use cases, then get monitoring type
+        fetchUseCasesAndStartMonitoring();
 
     }
 
@@ -109,6 +119,43 @@ public class MonitoringService extends Service {
     }
 
     /**
+     * Fetches available use cases from n8n backend to update the cache,
+     * then proceeds to get the monitoring type. If fetching fails, uses cached/hardcoded list.
+     */
+    private void fetchUseCasesAndStartMonitoring() {
+        if (networkController != null) {
+            LogManager.getInstance().log("n8n", "Fetching available use cases...");
+
+            networkController.getUseCases(new NetworkController.OnUseCasesReceived() {
+                @Override
+                public void onReceived(List<String> useCases) {
+                    // Update the cached list with fresh data from the server
+                    cachedUseCases = new ArrayList<>(useCases);
+                    Log.d(TAG, "✅ Use cases updated: " + cachedUseCases.toString());
+                    LogManager.getInstance().log("n8n", "Use cases loaded: " + cachedUseCases.toString());
+
+                    // Now proceed to get the monitoring type
+                    getMonitoringTypeFromn8n();
+                }
+
+                @Override
+                public void onError(String errorMessage) {
+                    // Use cached/hardcoded list as fallback
+                    Log.w(TAG, "⚠️ Failed to fetch use cases, using cached list: " + cachedUseCases.toString());
+                    LogManager.getInstance().log("n8n", "Using cached use cases: " + cachedUseCases.toString());
+
+                    // Still proceed to get the monitoring type with the fallback list
+                    getMonitoringTypeFromn8n();
+                }
+            });
+        } else {
+            Log.e(TAG, "❌ networkController is null!");
+            // Fallback: proceed with hardcoded list
+            getMonitoringTypeFromn8n();
+        }
+    }
+
+    /**
      * Retrieves the current monitoring type from the n8n backend and triggers the appropriate action
      * (e.g., heart rate or sun azimuth monitoring). Implements retry logic in case of network failure.
      */
@@ -137,9 +184,8 @@ public class MonitoringService extends Service {
                             LogManager.getInstance().log("Bluetooth", "Connecting for HeartRate monitoring");
                             connectToSmartwatchForMonitoring(monitoringType);
 
-                            // Handle API monitoring (requesting location)
-                            // currently should catch all non-heart rate monitoring types until we think of something better  --liran
-                        } else if ( !monitoringType.isEmpty()/*"SunAzimuth".equals(monitoringType) || "MoonAzimuth".equals(monitoringType) || "Pollution".equals(monitoringType)*/) {
+                            // Handle API monitoring (requesting location) - validate against cached use cases
+                        } else if (cachedUseCases.contains(monitoringType)) {
 
                             if (checkLocationPermissions()) {
                                 Log.d(TAG, "🔁 Permissions granted. Connecting for "+ monitoringType +"...");
@@ -156,7 +202,7 @@ public class MonitoringService extends Service {
                             }
                             // Handle unknown types
                         } else {
-                            Log.w(TAG, "⚠️ Unknown monitoringType received: " + monitoringType);
+                            Log.w(TAG, "⚠️ Unknown monitoringType received: " + monitoringType + ". Valid types: " + cachedUseCases);
                             LogManager.getInstance().log("Warning", "Unknown monitoring type: " + monitoringType);
                             LogManager.getInstance().setMonitoringError("Unknown: " + monitoringType);
                         }
