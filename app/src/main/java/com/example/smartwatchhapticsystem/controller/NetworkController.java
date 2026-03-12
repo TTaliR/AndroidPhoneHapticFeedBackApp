@@ -17,7 +17,9 @@ import com.android.volley.toolbox.Volley;
 import com.example.smartwatchhapticsystem.model.LocationData;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
+import okhttp3.ResponseBody;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -160,7 +162,7 @@ public class NetworkController {
         }
 
         // Step 2: Send location data based on monitoring type
-        Call<JsonObject> call = null;
+        Call<ResponseBody> call = null;
         if ("SunAzimuth".equals(monitoringType)) {
             call = api.sendSunLocation(locationData);
         } else if ("MoonAzimuth".equals(monitoringType)) {
@@ -178,34 +180,50 @@ public class NetworkController {
         }
 
         // Step 3: Enqueue the Retrofit call
-        call.enqueue(new Callback<JsonObject>() {
+        call.enqueue(new Callback<ResponseBody>() {
             @Override
-            public void onResponse(@NonNull Call<JsonObject> call, @NonNull retrofit2.Response<JsonObject> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    JsonObject jsonResponse = response.body();
-                    Log.d("NetworkController", "✅ Location Sent. Response: " + jsonResponse.toString());
+            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull retrofit2.Response<ResponseBody> response) {
+                if (response.isSuccessful()) {
+                    try {
+                        String responseString = response.body() != null ? response.body().string() : "";
+                        Log.d("NetworkController", "✅ Location Sent. Raw Response: " + responseString);
 
-                    String message = jsonResponse.has("message") && !jsonResponse.get("message").isJsonNull()
-                            ? jsonResponse.get("message").getAsString()
-                            : "No message in response.";
+                        // Handle empty response
+                        if (responseString == null || responseString.trim().isEmpty()) {
+                            Log.d("NetworkController", "ℹ️ Server returned empty response.");
+                            Toast.makeText(context, "Location Sent (no feedback data).", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
 
-                    int pulses = jsonResponse.has("pulses") ? jsonResponse.get("pulses").getAsInt() : 0;
-                    int intensity = jsonResponse.has("intensity") ? jsonResponse.get("intensity").getAsInt() : 0;
-                    int duration = jsonResponse.has("duration") ? jsonResponse.get("duration").getAsInt() : 0;
-                    int interval = jsonResponse.has("interval") ? jsonResponse.get("interval").getAsInt() : 0;
+                        // Parse JSON response
+                        JsonParser parser = new JsonParser();
+                        JsonObject jsonResponse = parser.parse(responseString).getAsJsonObject();
 
-                    Log.d("NetworkController", "📲 Vibration Parameters: " +
-                            "Pulses=" + pulses + ", Intensity=" + intensity +
-                            ", Duration=" + duration + ", Interval=" + interval);
+                        String message = jsonResponse.has("message") && !jsonResponse.get("message").isJsonNull()
+                                ? jsonResponse.get("message").getAsString()
+                                : "No message in response.";
 
-                    Toast.makeText(context, "Location Sent: " + message, Toast.LENGTH_SHORT).show();
+                        int pulses = jsonResponse.has("pulses") ? jsonResponse.get("pulses").getAsInt() : 0;
+                        int intensity = jsonResponse.has("intensity") ? jsonResponse.get("intensity").getAsInt() : 0;
+                        int duration = jsonResponse.has("duration") ? jsonResponse.get("duration").getAsInt() : 0;
+                        int interval = jsonResponse.has("interval") ? jsonResponse.get("interval").getAsInt() : 0;
 
-                    if (pulses > 0) {
-                        bluetoothConnectionManager.sendVibrationCommand(intensity, pulses, duration, interval);
-                    } else {
-                        Log.d("NetworkController", "ℹ️ No vibration needed (pulses=0).");
+                        Log.d("NetworkController", "📲 Vibration Parameters: " +
+                                "Pulses=" + pulses + ", Intensity=" + intensity +
+                                ", Duration=" + duration + ", Interval=" + interval);
+
+                        Toast.makeText(context, "Location Sent: " + message, Toast.LENGTH_SHORT).show();
+
+                        if (pulses > 0) {
+                            bluetoothConnectionManager.sendVibrationCommand(intensity, pulses, duration, interval);
+                        } else {
+                            Log.d("NetworkController", "ℹ️ No vibration needed (pulses=0).");
+                        }
+
+                    } catch (Exception e) {
+                        Log.e("NetworkController", "❌ Error parsing response: " + e.getMessage());
+                        Toast.makeText(context, "Location sent, but failed to parse response.", Toast.LENGTH_SHORT).show();
                     }
-
                 } else {
                     Log.e("NetworkController", "❌ Failed to send location. Response Code: " + response.code());
                     Toast.makeText(context, "Failed to send location.", Toast.LENGTH_SHORT).show();
@@ -213,7 +231,7 @@ public class NetworkController {
             }
 
             @Override
-            public void onFailure(@NonNull Call<JsonObject> call, @NonNull Throwable t) {
+            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
                 Log.e("NetworkController", "❌ Network Error: " + t.getMessage());
                 Toast.makeText(context, "Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
             }
