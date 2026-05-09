@@ -163,8 +163,11 @@ public class MonitoringService extends Service {
         // Step 1: Ensure the network controller is initialized
         if (networkController != null) {
 
+            // Extract userId from identifier (e.g., "Android-50" -> "50")
+            String userId = identifier.contains("-") ? identifier.split("-")[1] : "101";
+
             // Step 2: Call the backend to fetch the monitoring type
-            networkController.getMonitoringType(new NetworkController.OnMonitoringTypeReceived() {
+            networkController.getMonitoringType(userId, new NetworkController.OnMonitoringTypeReceived() {
 
                 // Callback triggered when monitoring type is successfully retrieved
                 @Override

@@ -77,14 +77,18 @@ public class NetworkController {
      * If the type is successfully retrieved, the result is passed to the provided listener.
      * In case of errors (network, JSON, unknown value), an appropriate error is reported via the listener.
      *
+     * @param userId   The ID of the user to fetch configuration for.
      * @param listener A callback interface to receive either the valid monitoring type or an error message.
      */
-    public void getMonitoringType(OnMonitoringTypeReceived listener) {
+    public void getMonitoringType(String userId, OnMonitoringTypeReceived listener) {
 
         // Step 1: Create a GET request using Volley to the n8n configuration endpoint
+        String urlWithParams = n8n_CONFIG_URL + "?userId=" + userId;
+        Log.d("NetworkController", "📡 Requesting: " + urlWithParams);
+
         JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(
                 Request.Method.GET,                 // HTTP GET method
-                n8n_CONFIG_URL,               // The URL to fetch monitoring type from
+                urlWithParams,               // The URL to fetch monitoring type from
                 null,                              // No body required for GET request
                 new Response.Listener<JSONObject>() {
                     // Called when the server responds with a valid JSON

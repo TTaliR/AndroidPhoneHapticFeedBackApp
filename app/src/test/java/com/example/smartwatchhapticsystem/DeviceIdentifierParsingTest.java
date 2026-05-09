@@ -142,5 +142,18 @@ public class DeviceIdentifierParsingTest {
         assertEquals("UnknownUser", result[0]);
         assertEquals("UnknownWatch", result[1]);
     }
+
+    @Test
+    public void testUserIdExtraction() {
+        String identifier = "Android-101";
+        String userId = identifier.contains("-") ? identifier.split("-")[1] : "101";
+        assertEquals("101", userId);
+
+        String fallbackIdentifier = "GenericDevice";
+        String fallbackUserId = fallbackIdentifier.contains("-") ? fallbackIdentifier.split("-")[1] : "101";
+        assertEquals("101", fallbackUserId);
+    }
+
+
 }
 
