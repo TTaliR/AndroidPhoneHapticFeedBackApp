@@ -40,6 +40,10 @@ public class BluetoothConnectionManager {
         this.identifier = identifier;
     }
 
+    public void setIdentifier(String identifier) {
+        this.identifier = identifier;
+    }
+
     /**
      * **Check if Bluetooth permissions are granted (For Android 12+)**
      */
@@ -215,8 +219,10 @@ public class BluetoothConnectionManager {
             }
         }
         String fallback = identifier;
-        if(!dataMap.get("AndroidID").equals("UnknownAndroid")){
-            dataMap.put("AndroidID", fallback.split("-")[1]);
+        if (dataMap.getOrDefault("AndroidID", "UnknownAndroid").equals("UnknownAndroid")) {
+            if (fallback != null && fallback.contains("-")) {
+                dataMap.put("AndroidID", fallback.split("-")[1]);
+            }
         }
         boolean unknownDetected = false;
 

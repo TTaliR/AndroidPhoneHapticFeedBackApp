@@ -44,7 +44,8 @@ public class MonitoringService extends Service {
     private BluetoothConnectionManager bluetoothManager;
     private static final String TAG = "MainActivity";
     private String monitoringType = "";
-    private String identifier = "Android-50"; // Example : Android-42
+    private String identifier = "Android-100"; // Example : Android-42
+    private boolean isMonitoringActive = false;
     private long lastSensorSendTime = 0;
     private static final long SENSOR_THROTTLE_MS = 1000; // 1 second interval (1Hz) for all watch sensor data
 
@@ -172,6 +173,7 @@ public class MonitoringService extends Service {
                 // Callback triggered when monitoring type is successfully retrieved
                 @Override
                 public void onReceived(String type) {
+                    boolean typeChanged = !type.equals(monitoringType);
                     monitoringType = type;
                     currentRetries = 0;  // Reset retry counter on success
 
@@ -181,33 +183,39 @@ public class MonitoringService extends Service {
                         LogManager.getInstance().setn8nConnected();
                         LogManager.getInstance().setMonitoringType(monitoringType);
 
-                        // Handle heart rate monitoring (no location needed)
-                        if ("HeartRate".equals(monitoringType)) {
-                            Log.d(TAG, "🔁 Connecting for HeartRate...");
-                            LogManager.getInstance().log("Bluetooth", "Connecting for HeartRate monitoring");
-                            connectToSmartwatchForMonitoring(monitoringType);
-
-                            // Handle API monitoring (requesting location) - validate against cached use cases
-                        } else if (cachedUseCases.contains(monitoringType)) {
-
-                            if (checkLocationPermissions()) {
-                                Log.d(TAG, "🔁 Permissions granted. Connecting for "+ monitoringType +"...");
-                                LogManager.getInstance().log("Location", "Starting location updates for " + monitoringType);
-                                LogManager.getInstance().setLocationActive();
-                                connectToSmartwatchForMonitoring(monitoringType);
-                                startLocationUpdates();  // Start location tracking for sun position or moon position
-                            } else {
-                                Log.w(TAG, "⚠️ Permissions not granted...");
-                                LogManager.getInstance().log("Location", "Location permissions not granted");
-                                LogManager.getInstance().setLocationInactive();
-                                // Optional: You could request location permissions here if needed
-                                // requestLocationPermissions();
+                        // Only proceed if the type has changed or if monitoring hasn't started yet
+                        if (typeChanged || !isMonitoringActive) {
+                            if (isMonitoringActive) {
+                                stopCurrentMonitoring(); // Clean up previous monitoring session
                             }
-                            // Handle unknown types
-                        } else {
-                            Log.w(TAG, "⚠️ Unknown monitoringType received: " + monitoringType + ". Valid types: " + cachedUseCases);
-                            LogManager.getInstance().log("Warning", "Unknown monitoring type: " + monitoringType);
-                            LogManager.getInstance().setMonitoringError("Unknown: " + monitoringType);
+                            isMonitoringActive = true;
+
+                            // Handle heart rate monitoring (no location needed)
+                            if ("HeartRate".equals(monitoringType)) {
+                                Log.d(TAG, "🔁 Connecting for HeartRate...");
+                                LogManager.getInstance().log("Bluetooth", "Connecting for HeartRate monitoring");
+                                connectToSmartwatchForMonitoring(monitoringType);
+
+                                // Handle API monitoring (requesting location) - validate against cached use cases
+                            } else if (cachedUseCases.contains(monitoringType)) {
+
+                                if (checkLocationPermissions()) {
+                                    Log.d(TAG, "🔁 Permissions granted. Connecting for " + monitoringType + "...");
+                                    LogManager.getInstance().log("Location", "Starting location updates for " + monitoringType);
+                                    LogManager.getInstance().setLocationActive();
+                                    connectToSmartwatchForMonitoring(monitoringType);
+                                    startLocationUpdates();  // Start location tracking for sun position or moon position
+                                } else {
+                                    Log.w(TAG, "⚠️ Permissions not granted...");
+                                    LogManager.getInstance().log("Location", "Location permissions not granted");
+                                    LogManager.getInstance().setLocationInactive();
+                                }
+                            } else {
+                                Log.w(TAG, "⚠️ Unknown monitoringType received: " + monitoringType + ". Valid types: " + cachedUseCases);
+                                LogManager.getInstance().log("Warning", "Unknown monitoring type: " + monitoringType);
+                                LogManager.getInstance().setMonitoringError("Unknown: " + monitoringType);
+                                isMonitoringActive = false;
+                            }
                         }
 
                     } catch (Exception e) {
@@ -374,6 +382,21 @@ public class MonitoringService extends Service {
                 Log.d(TAG, "✅ Full data received: " + data.toString());
                 LogManager.getInstance().setBluetoothConnected(smartwatch.getName());
                 LogManager.getInstance().log("Data", "Received: " + data.toString());
+                isMonitoringActive = true;
+
+                // Update identifier if watch provides a specific UserID (transition from handshake ID)
+                String receivedUserId = data.get("UserID");
+                if (receivedUserId != null && !receivedUserId.equals("UnknownUser")) {
+                    String currentUserId = identifier.contains("-") ? identifier.split("-")[1] : "";
+                    if (!receivedUserId.equals(currentUserId)) {
+                        Log.d(TAG, "🆔 Updating identifier: " + identifier + " -> Android-" + receivedUserId);
+                        identifier = "Android-" + receivedUserId;
+                        bluetoothManager.setIdentifier(identifier);
+                        // Re-fetch configuration from n8n for the newly identified user
+                        getMonitoringTypeFromn8n();
+                        return; // Exit current loop; service will restart if config changed
+                    }
+                }
 
                 // Step 3: Throttle all watch sensor data to 1Hz (1 second intervals)
                 if (currentTime - lastSensorSendTime >= SENSOR_THROTTLE_MS) {
@@ -399,6 +422,7 @@ public class MonitoringService extends Service {
                 Log.e(TAG, errorMessage + " Retrying in 3 seconds...");
                 LogManager.getInstance().log("Bluetooth", "Error: " + errorMessage);
                 LogManager.getInstance().setBluetoothDisconnected();
+                isMonitoringActive = false;
                 // Retry connection after a delay
                 retryHandler.postDelayed(() -> connectToSmartwatchForMonitoring(monitoringType), RETRY_INTERVAL_MS);
             }
@@ -439,6 +463,26 @@ public class MonitoringService extends Service {
     }
 
     /**
+     * Stops all ongoing monitoring tasks, including Bluetooth connection and location updates.
+     */
+    private void stopCurrentMonitoring() {
+        Log.d(TAG, "🛑 Stopping current monitoring session...");
+        isMonitoringActive = false;
+        retryHandler.removeCallbacksAndMessages(null);
+
+        if (bluetoothManager != null) {
+            bluetoothManager.disconnect();
+            LogManager.getInstance().setBluetoothDisconnected();
+        }
+
+        if (locationController != null) {
+            locationController.stopLocationUpdates();
+            LogManager.getInstance().setLocationInactive();
+        }
+    }
+
+
+    /**
      * Called when the service is being destroyed, either by the system or manually via stopService().
      * <p>
      * This is where you clean up any ongoing tasks, threads, or resources to avoid memory leaks.
@@ -449,22 +493,7 @@ public class MonitoringService extends Service {
         Log.d("MonitoringService", "🔴 Service stopped");
         LogManager.getInstance().log("Service", "Monitoring service stopped");
 
-        // Step 1: Stop any pending retries for reconnecting or polling
-        retryHandler.removeCallbacksAndMessages(null);
-
-        // Step 2: Disconnect from the smartwatch if connected
-        if (bluetoothManager != null) {
-            bluetoothManager.disconnect();
-            LogManager.getInstance().setBluetoothDisconnected();
-        }
-
-        // Step 3: Stop location updates to save battery and resources
-        if (locationController != null) {
-            locationController.stopLocationUpdates();
-            LogManager.getInstance().setLocationInactive();
-        }
-
-        // Any additional cleanup (e.g., closing database, stopping sensors) can go here
+        stopCurrentMonitoring();
     }
 
     /**
