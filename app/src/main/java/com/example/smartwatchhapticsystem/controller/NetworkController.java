@@ -38,7 +38,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
 public class NetworkController {
     private final n8nApis api;
     private final RequestQueue requestQueue;
-    private final String myIp = "https://entomb-imprudent-diffusion.ngrok-free.dev/webhook";
+    private final String myIp = "https://marcella-unguerdoned-ayanna.ngrok-free.dev/webhook";
     private final String n8n_CONFIG_URL =  myIp + "/monitoring-config";
     private final String n8n_POST_URL = myIp + "/heartRate";
     private final BluetoothConnectionManager bluetoothConnectionManager;
