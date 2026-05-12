@@ -38,7 +38,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
 public class NetworkController {
     private final n8nApis api;
     private final RequestQueue requestQueue;
-    private final String myIp = "https://marcella-unguerdoned-ayanna.ngrok-free.dev/webhook";
+    private final String myIp = "https://entomb-imprudent-diffusion.ngrok-free.dev/webhook";
     private final String n8n_CONFIG_URL =  myIp + "/monitoring-config";
     private final String n8n_POST_URL = myIp + "/heartRate";
     private final BluetoothConnectionManager bluetoothConnectionManager;
@@ -67,74 +67,61 @@ public class NetworkController {
 
 
     /**
-     * Get Monitoring Type ( SunAzimuth or HeartRate) from n8n.
-     */
-    /**
-     * Makes an HTTP GET request to the n8n backend to fetch the current monitoring type.
-     * The expected response format is a JSON object containing a key "monitoringType"
-     * with a value like "HeartRate" or "SunAzimuth".
+     * Makes an HTTP GET request to the n8n backend to fetch the monitoring type for a specific user.
+     * The request includes the userId as a query parameter to allow for user-specific configurations.
      *
-     * If the type is successfully retrieved, the result is passed to the provided listener.
-     * In case of errors (network, JSON, unknown value), an appropriate error is reported via the listener.
-     *
-     * @param listener A callback interface to receive either the valid monitoring type or an error message.
+     * @param userId   The parsed ID of the user (e.g., from the smartwatch identity).
+     * @param listener A callback interface to receive either the valid monitoring type or an error.
      */
-    public void getMonitoringType(OnMonitoringTypeReceived listener) {
+    public void getMonitoringType(int userId, OnMonitoringTypeReceived listener) {
 
-        // Step 1: Create a GET request using Volley to the n8n configuration endpoint
+        // Step 1: Append the userId as a query parameter to the URL
+        // Your n8n workflow extracts this using: req.query?.userId
+        String urlWithParams = n8n_CONFIG_URL + "?userId=" + userId;
+
+        // Step 2: Create the GET request
         JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(
-                Request.Method.GET,                 // HTTP GET method
-                n8n_CONFIG_URL,               // The URL to fetch monitoring type from
-                null,                              // No body required for GET request
-                new Response.Listener<JSONObject>() {
-                    // Called when the server responds with a valid JSON
-                    @Override
-                    public void onResponse(JSONObject response) {
-                        try {
-                            // Step 2: Log the full raw JSON response for debugging
-                            Log.d("NetworkController", "✅ Full Response: " + response.toString());
+                Request.Method.GET,
+                urlWithParams,
+                null, // No body needed for GET
+                response -> {
+                    try {
+                        // Log the full response for debugging
+                        Log.d("NetworkController", "✅ Response for User " + userId + ": " + response.toString());
 
-                            // Step 3: Extract the "monitoringType" value from the JSON
-                            String monitoringType = response.optString("monitoringType", "Unknown");
-                            Log.d("NetworkController", "✅ Monitoring Type: " + monitoringType);
+                        // Step 3: Check the "success" field from your n8n "Format monitoring config response" node
+                        boolean success = response.optBoolean("success", false);
+                        String monitoringType = response.optString("monitoringType", "Unknown");
 
-                            // Step 4: Check if a valid type was returned
-                            if (monitoringType.equals("Unknown")) {
-                                listener.onError("❌ Unknown monitoring type!");
-                            } else {
-                                listener.onReceived(monitoringType); // Success callback
-                            }
-
-                        } catch (Exception e) {
-                            // Step 5: Catch any exceptions during parsing
-                            listener.onError("❌ JSON Parsing Error: " + e.getMessage());
-                            Log.e("NetworkController", "❌ JSON Parsing Error: " + e.getMessage());
+                        if (success && !monitoringType.equals("Unknown")) {
+                            // Success path: notify the listener with the assigned use case
+                            listener.onReceived(monitoringType);
+                        } else {
+                            // Error path: extract the error message from the n8n response if available
+                            String errorMsg = response.optString("error", "No configuration found for this user");
+                            listener.onError("❌ Server Error: " + errorMsg);
                         }
+
+                    } catch (Exception e) {
+                        listener.onError("❌ JSON Parsing Error: " + e.getMessage());
                     }
                 },
-                new Response.ErrorListener() {
-                    // Called when the request fails due to network error, timeout, etc.
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        listener.onError("❌ Volley Error: " + error.toString());
-                        Log.e("NetworkController", "❌ Volley Error: " + error.toString());
-
-                        // Optionally log the HTTP status code if available
-                        if (error.networkResponse != null) {
-                            Log.e("NetworkController", "❌ HTTP Status Code: " + error.networkResponse.statusCode);
-                        }
+                error -> {
+                    listener.onError("❌ Network Error: " + error.toString());
+                    if (error.networkResponse != null) {
+                        Log.e("NetworkController", "❌ HTTP Status Code: " + error.networkResponse.statusCode);
                     }
                 }
         );
 
-        // Step 6: Configure retry policy in case of timeouts or slow connections
+        // Step 4: Configure retry policy
         jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
-                5000, // Timeout in milliseconds
-                DefaultRetryPolicy.DEFAULT_MAX_RETRIES, // Default retry attempts
-                DefaultRetryPolicy.DEFAULT_BACKOFF_MULT // Backoff multiplier for exponential delay
+                5000,
+                DefaultRetryPolicy.DEFAULT_MAX_RETRIES,
+                DefaultRetryPolicy.DEFAULT_BACKOFF_MULT
         ));
 
-        // Step 7: Add the request to the Volley request queue for execution
+        // Step 5: Execute the request
         requestQueue.add(jsonObjectRequest);
     }
 

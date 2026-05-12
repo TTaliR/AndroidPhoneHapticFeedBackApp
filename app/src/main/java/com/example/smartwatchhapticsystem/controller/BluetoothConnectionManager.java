@@ -97,6 +97,32 @@ public class BluetoothConnectionManager {
         return null;
     }
 
+    /**
+     * Proactively extracts the UserID and SmartWatchID from a Bluetooth device's name or alias.
+     * This can be called during discovery (before connection) to identify the user for n8n.
+     *
+     * @param device The BluetoothDevice to parse.
+     * @return A Map containing "UserID" and "SmartWatchID", or empty if parsing fails.
+     */
+    public Map<String, String> getIdsFromDeviceIdentity(BluetoothDevice device) {
+        Map<String, String> results = new HashMap<>();
+        if (device == null) return results;
+
+        try {
+            @SuppressLint("MissingPermission")
+            String identity = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ? device.getAlias() : device.getName();
+
+            if (identity != null && identity.matches("^UserID-\\d+-SmartWatchID-\\d+$")) {
+                String[] tokens = identity.split("-");
+                results.put("UserID", tokens[1]);
+                results.put("SmartWatchID", tokens[3]);
+            }
+        } catch (SecurityException e) {
+            Log.e(TAG, "❌ Missing permissions to read device identity", e);
+        }
+        return results;
+    }
+
 
 
     /**
@@ -232,25 +258,15 @@ public class BluetoothConnectionManager {
             }
         }
 
-        // Recover UserID and WatchID if unknown
+        // Recover UserID and WatchID if unknown using the helper method
         if ("UnknownWatch".equals(dataMap.get("SmartWatchID")) || "UnknownUser".equals(dataMap.get("UserID"))) {
-            try {
-                BluetoothDevice remoteDevice = bluetoothSocket.getRemoteDevice();
-                @SuppressLint("MissingPermission") String alias = remoteDevice.getAlias();
-
-                Log.d(TAG, "🔍 Alias: " + alias);
-
-                if (alias != null && alias.matches("^UserID-\\d+-SmartWatchID-\\d+$")) {
-                    String[] tokens = alias.split("-");
-                    dataMap.put("UserID", tokens[1]);
-                    dataMap.put("SmartWatchID", tokens[3]);
-                    Log.d(TAG, "✅ Recovered IDs: " + tokens[1] + ", " + tokens[3]);
-                } else {
-                    Log.w(TAG, "❌ Could not recover Watch/User IDs.");
-                    unknownDetected = true;
-                }
-            } catch (SecurityException e) {
-                Log.e(TAG, "❌ SecurityException while retrieving alias", e);
+            Map<String, String> recoveredIds = getIdsFromDeviceIdentity(bluetoothSocket.getRemoteDevice());
+            if (!recoveredIds.isEmpty()) {
+                dataMap.put("UserID", recoveredIds.get("UserID"));
+                dataMap.put("SmartWatchID", recoveredIds.get("SmartWatchID"));
+                Log.d(TAG, "✅ Recovered IDs from device identity.");
+            } else {
+                Log.w(TAG, "❌ Could not recover Watch/User IDs.");
                 unknownDetected = true;
             }
         }
