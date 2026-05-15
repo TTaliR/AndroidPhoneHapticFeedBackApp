@@ -287,7 +287,7 @@ public class BluetoothConnectionManager {
         // Validate and deliver heart rate value
         if (dataMap.containsKey("Value")) {
             try {
-                Integer.parseInt(dataMap.get("Value")); // Validate numeric format
+                Double.parseDouble(dataMap.get("Value")); // Validate numeric format
 
                 if (listener != null) {
                     handler.post(() -> listener.onReceived(dataMap));
