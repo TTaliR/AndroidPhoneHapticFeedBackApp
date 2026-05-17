@@ -8,8 +8,8 @@ import java.util.Map;
 import static org.junit.Assert.*;
 
 /**
- * Unit tests for heart rate data validation and parsing.
- * Tests validation of heart rate values and data map structure.
+ * Unit tests for sensor data validation and parsing.
+ * Updated to reflect the generic "Value" field used in the refactored architecture.
  */
 public class HeartRateDataValidationTest {
 
@@ -33,14 +33,15 @@ public class HeartRateDataValidationTest {
     }
 
     /**
-     * Parses heart rate from data map (returns -1 if invalid)
+     * Parses sensor value from data map (returns -1 if invalid)
+     * Matches the generic "Value" field.
      */
-    private int parseHeartRate(Map<String, String> data) {
-        if (data == null || !data.containsKey("heartRate")) {
+    private int parseSensorValue(Map<String, String> data) {
+        if (data == null || !data.containsKey("Value") || data.get("Value") == null) {
             return -1;
         }
         try {
-            return Integer.parseInt(data.get("heartRate"));
+            return (int) Double.parseDouble(data.get("Value"));
         } catch (NumberFormatException e) {
             return -1;
         }
@@ -51,7 +52,7 @@ public class HeartRateDataValidationTest {
      */
     private boolean hasRequiredFields(Map<String, String> data) {
         if (data == null) return false;
-        return data.containsKey("heartRate") &&
+        return data.containsKey("Value") &&
                data.containsKey("userId") &&
                data.containsKey("smartWatchId");
     }
@@ -96,73 +97,73 @@ public class HeartRateDataValidationTest {
     // ==================== Data Parsing Tests ====================
 
     @Test
-    public void testParseHeartRate_ValidData() {
+    public void testParseSensorValue_ValidData() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "72");
+        data.put("Value", "72");
         data.put("userId", "123");
         data.put("smartWatchId", "456");
 
-        assertEquals(72, parseHeartRate(data));
+        assertEquals(72, parseSensorValue(data));
     }
 
     @Test
-    public void testParseHeartRate_MissingKey() {
+    public void testParseSensorValue_MissingKey() {
         Map<String, String> data = new HashMap<>();
         data.put("userId", "123");
 
-        assertEquals(-1, parseHeartRate(data));
+        assertEquals(-1, parseSensorValue(data));
     }
 
     @Test
-    public void testParseHeartRate_NullMap() {
-        assertEquals(-1, parseHeartRate(null));
+    public void testParseSensorValue_NullMap() {
+        assertEquals(-1, parseSensorValue(null));
     }
 
     @Test
-    public void testParseHeartRate_EmptyMap() {
-        assertEquals(-1, parseHeartRate(new HashMap<>()));
+    public void testParseSensorValue_EmptyMap() {
+        assertEquals(-1, parseSensorValue(new HashMap<>()));
     }
 
     @Test
-    public void testParseHeartRate_NonNumericValue() {
+    public void testParseSensorValue_NonNumericValue() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "abc");
+        data.put("Value", "abc");
 
-        assertEquals(-1, parseHeartRate(data));
+        assertEquals(-1, parseSensorValue(data));
     }
 
     @Test
-    public void testParseHeartRate_EmptyValue() {
+    public void testParseSensorValue_EmptyValue() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "");
+        data.put("Value", "");
 
-        assertEquals(-1, parseHeartRate(data));
+        assertEquals(-1, parseSensorValue(data));
     }
 
     @Test
-    public void testParseHeartRate_NullValue() {
+    public void testParseSensorValue_NullValue() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", null);
+        data.put("Value", null);
 
-        assertEquals(-1, parseHeartRate(data));
+        assertEquals(-1, parseSensorValue(data));
     }
 
     @Test
-    public void testParseHeartRate_FloatValue() {
+    public void testParseSensorValue_FloatValue() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "72.5");
+        data.put("Value", "72.5");
 
-        // Integer.parseInt doesn't handle floats
-        assertEquals(-1, parseHeartRate(data));
+        // Double.parseDouble handles floats, and we cast to int
+        assertEquals(72, parseSensorValue(data));
     }
 
     @Test
-    public void testParseHeartRate_WithWhitespace() {
+    public void testParseSensorValue_WithWhitespace() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", " 72 ");
+        data.put("Value", " 72 ");
 
-        // Integer.parseInt doesn't handle whitespace
-        assertEquals(-1, parseHeartRate(data));
+        // Double.parseDouble handles whitespace
+        assertEquals(72, parseSensorValue(data));
     }
 
     // ==================== Required Fields Tests ====================
@@ -170,7 +171,7 @@ public class HeartRateDataValidationTest {
     @Test
     public void testHasRequiredFields_AllPresent() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "72");
+        data.put("Value", "72");
         data.put("userId", "123");
         data.put("smartWatchId", "456");
 
@@ -178,7 +179,7 @@ public class HeartRateDataValidationTest {
     }
 
     @Test
-    public void testHasRequiredFields_MissingHeartRate() {
+    public void testHasRequiredFields_MissingValue() {
         Map<String, String> data = new HashMap<>();
         data.put("userId", "123");
         data.put("smartWatchId", "456");
@@ -189,7 +190,7 @@ public class HeartRateDataValidationTest {
     @Test
     public void testHasRequiredFields_MissingUserId() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "72");
+        data.put("Value", "72");
         data.put("smartWatchId", "456");
 
         assertFalse(hasRequiredFields(data));
@@ -198,7 +199,7 @@ public class HeartRateDataValidationTest {
     @Test
     public void testHasRequiredFields_MissingSmartWatchId() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "72");
+        data.put("Value", "72");
         data.put("userId", "123");
 
         assertFalse(hasRequiredFields(data));
@@ -217,7 +218,7 @@ public class HeartRateDataValidationTest {
     @Test
     public void testHasRequiredFields_ExtraFieldsAreOk() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "72");
+        data.put("Value", "72");
         data.put("userId", "123");
         data.put("smartWatchId", "456");
         data.put("timestamp", "1234567890");
@@ -231,39 +232,38 @@ public class HeartRateDataValidationTest {
     @Test
     public void testCompleteValidation_ValidData() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "72");
+        data.put("Value", "72");
         data.put("userId", "123");
         data.put("smartWatchId", "456");
 
         assertTrue(hasRequiredFields(data));
-        int hr = parseHeartRate(data);
-        assertTrue(isValidHeartRate(hr));
-        assertTrue(isNormalRestingHR(hr));
+        int val = parseSensorValue(data);
+        assertTrue(isValidHeartRate(val));
+        assertTrue(isNormalRestingHR(val));
     }
 
     @Test
-    public void testCompleteValidation_HighHeartRate() {
+    public void testCompleteValidation_HighValue() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "180");
+        data.put("Value", "180");
         data.put("userId", "123");
         data.put("smartWatchId", "456");
 
         assertTrue(hasRequiredFields(data));
-        int hr = parseHeartRate(data);
-        assertTrue(isValidHeartRate(hr));     // Valid physiologically
-        assertFalse(isNormalRestingHR(hr));   // Not normal resting
+        int val = parseSensorValue(data);
+        assertTrue(isValidHeartRate(val));     // Valid physiologically
+        assertFalse(isNormalRestingHR(val));   // Not normal resting
     }
 
     @Test
-    public void testCompleteValidation_InvalidHeartRate() {
+    public void testCompleteValidation_InvalidValue() {
         Map<String, String> data = new HashMap<>();
-        data.put("heartRate", "0");
+        data.put("Value", "0");
         data.put("userId", "123");
         data.put("smartWatchId", "456");
 
         assertTrue(hasRequiredFields(data));
-        int hr = parseHeartRate(data);
-        assertFalse(isValidHeartRate(hr));    // Not valid
+        int val = parseSensorValue(data);
+        assertFalse(isValidHeartRate(val));    // Not valid
     }
 }
-

@@ -33,7 +33,7 @@ public class BluetoothConnectionManager {
     private Handler handler = new Handler(Looper.getMainLooper());
 
     private final Context context;
-    private OnHeartRateReceived listener;
+    private OnSensorDataReceived listener;
 
     public BluetoothConnectionManager(Context context, String identifier) {
         this.context = context;
@@ -134,10 +134,10 @@ public class BluetoothConnectionManager {
      * sends the monitoring type command, and starts listening for incoming data.
      *
      * @param watchDevice       The paired Bluetooth smartwatch device to connect to.
-     * @param heartRateListener A callback interface for receiving heart rate data or errors.
+     * @param sensorListener    A callback interface for receiving sensor data or errors.
      * @param monitoringType    The type of monitoring to activate on the smartwatch (e.g., "HeartRate" or "SunAzimuth").
      */
-    public void connectToWatch(BluetoothDevice watchDevice, OnHeartRateReceived heartRateListener, String monitoringType) {
+    public void connectToWatch(BluetoothDevice watchDevice, OnSensorDataReceived sensorListener, String monitoringType) {
         // Step 1: Validate the device
         if (watchDevice == null) {
             Log.e(TAG, "❌ Watch device is null!");
@@ -149,15 +149,15 @@ public class BluetoothConnectionManager {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT)
                     != PackageManager.PERMISSION_GRANTED) {
                 Log.e(TAG, "❌ Missing BLUETOOTH_CONNECT permission!");
-                if (heartRateListener != null) {
-                    heartRateListener.onError("Missing Bluetooth permission");
+                if (sensorListener != null) {
+                    sensorListener.onError("Missing Bluetooth permission");
                 }
                 return;
             }
         }
 
         // Step 3: Save the listener for later use (e.g., for error or data callbacks)
-        this.listener = heartRateListener;
+        this.listener = sensorListener;
 
         // Step 4: Start a new background thread to avoid blocking the UI
         new Thread(() -> {
@@ -215,8 +215,8 @@ public class BluetoothConnectionManager {
                 line = line.trim();
                 Log.d(TAG, "📥 Received: " + line);
 
-                if (line.startsWith("MonitoringType:HeartRate")) {
-                    handleHeartRateMessage(line, bluetoothSocket); // 👈 Extracted method
+                if (line.startsWith("MonitoringType:")) {
+                    handleSensorMessage(line, bluetoothSocket);
                 } else {
                     Log.w(TAG, "⚠️ Unrecognized data format: " + line);
                 }
@@ -229,11 +229,11 @@ public class BluetoothConnectionManager {
         }
     }
     /**
-     * Handles a Bluetooth message containing heart rate data.
+     * Handles a Bluetooth message containing sensor data.
      * Parses the message, attempts to recover unknown identifiers,
-     * validates the heart rate value, and notifies the listener.
+     * validates the data, and notifies the listener.
      */
-    private void handleHeartRateMessage(String line, BluetoothSocket bluetoothSocket) {
+    private void handleSensorMessage(String line, BluetoothSocket bluetoothSocket) {
         Map<String, String> dataMap = new HashMap<>();
 
         // Step 1: Parse key-value pairs
@@ -254,7 +254,6 @@ public class BluetoothConnectionManager {
 
         // Recover AndroidID if unknown
         if ("UnknownAndroid".equals(dataMap.get("AndroidID"))) {
-//            String fallback = Settings.Global.getString(context.getContentResolver(), "device_name");
             if (fallback != null && fallback.matches("^Android-\\d+$")) {
                 dataMap.put("AndroidID", fallback.split("-")[1]);
                 Log.d(TAG, "✅ Recovered AndroidID: " + fallback);
@@ -277,6 +276,7 @@ public class BluetoothConnectionManager {
             }
         }
 
+        // Step 3: Validate IDs. If any are unknown, notify the listener and abort.
         if (unknownDetected) {
             if (listener != null) {
                 handler.post(() -> listener.onError("❌ Unrecoverable Unknown fields."));
@@ -284,23 +284,25 @@ public class BluetoothConnectionManager {
             return;
         }
 
-        // Validate and deliver heart rate value
+        // Step 4: Soft validation of the sensor 'Value'
+        // Most Android sensors (HeartRate, Light, etc.) send numeric data.
+        // This check logs a warning if data is non-numeric (e.g., status strings or CSV coordinates)
+        // but still allows the data to pass to n8n for flexible routing.
         if (dataMap.containsKey("Value")) {
+            String sensorValue = dataMap.get("Value");
             try {
-                Double.parseDouble(dataMap.get("Value")); // Validate numeric format
-
-                if (listener != null) {
-                    handler.post(() -> listener.onReceived(dataMap));
+                if (sensorValue != null) {
+                    Double.parseDouble(sensorValue);
                 }
-
             } catch (NumberFormatException e) {
-                Log.e(TAG, "❌ Invalid heart rate: " + dataMap.get("Value"), e);
-                if (listener != null) {
-                    handler.post(() -> listener.onError("Invalid heart rate format"));
-                }
+                // Log but don't block. This allows for non-numeric sensor states or multi-axis data (X,Y,Z).
+                Log.w(TAG, "⚠️ Non-numeric sensor value detected: " + sensorValue);
             }
-        } else {
-            Log.w(TAG, "⚠️ Missing heart rate value in data: " + line);
+        }
+
+        // Notify the listener with the generic data map
+        if (listener != null) {
+            handler.post(() -> listener.onReceived(dataMap));
         }
     }
 
@@ -364,9 +366,9 @@ public class BluetoothConnectionManager {
 
 
     /**
-     * **Interface for heart rate response.**
+     * **Interface for generic sensor data response.**
      */
-    public interface OnHeartRateReceived {
+    public interface OnSensorDataReceived {
         void onReceived(Map<String, String> data);  // Key-value data map
         void onError(String errorMessage);
     }

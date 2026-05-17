@@ -28,7 +28,6 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.Priority;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -48,10 +47,8 @@ public class MonitoringService extends Service {
     private long lastSensorSendTime = 0;
     private static final long SENSOR_THROTTLE_MS = 1000; // 1 second interval (1Hz) for all watch sensor data
 
-    // Cached use cases with hardcoded fallback list
-    private List<String> cachedUseCases = new ArrayList<>(Arrays.asList(
-            "HeartRate", "SunAzimuth", "MoonAzimuth", "Pollution"
-    ));
+    // Cached use cases fetched from n8n
+    private List<String> cachedUseCases = new ArrayList<>();
 
     @Override
     public void onCreate() {
@@ -369,8 +366,8 @@ public class MonitoringService extends Service {
 
 
     /**
-     * Attempts to connect to a paired smartwatch using Bluetooth and start heart rate monitoring.
-     * If a watch is found, it establishes a connection and listens for heart rate data.
+     * Attempts to connect to a paired smartwatch using Bluetooth and start monitoring.
+     * If a watch is found, it establishes a connection and listens for sensor data.
      * If no watch is found, or an error occurs, it retries after a delay.
      *
      * @param monitoringType The type of monitoring to activate (e.g., "HeartRate").
@@ -394,7 +391,7 @@ public class MonitoringService extends Service {
         LogManager.getInstance().log("Bluetooth", "Found smartwatch: " + smartwatch.getName());
 
         // Step 2: Connect to the smartwatch and define how to handle incoming data or errors
-        bluetoothManager.connectToWatch(smartwatch, new BluetoothConnectionManager.OnHeartRateReceived() {
+        bluetoothManager.connectToWatch(smartwatch, new BluetoothConnectionManager.OnSensorDataReceived() {
 
             // Callback triggered when valid sensor data is received from the watch
             @Override
@@ -409,13 +406,8 @@ public class MonitoringService extends Service {
                     lastSensorSendTime = currentTime;
                     Log.d(TAG, "✅ Sending Data (Throttled at 1Hz): " + data.toString());
 
-                    // Dispatch based on monitoring type
-                    if ("HeartRate".equalsIgnoreCase(monitoringType)) {
-                        sendHeartRateToN8n(data);
-                    }
-                    // Future sensor types can be added here:
-                    // else if ("Temperature".equalsIgnoreCase(monitoringType)) { sendTemperatureToN8n(data); }
-                    // else if ("SpO2".equalsIgnoreCase(monitoringType)) { sendSpO2ToN8n(data); }
+                    // Attach current location to sensor data before sending
+                    attachLocationAndSend(data);
                 }
 
                 // Step 4: Stop retry attempts now that communication is successful
@@ -435,12 +427,27 @@ public class MonitoringService extends Service {
     }
 
     /**
-     * Sends parsed heart rate data to the n8n server using the network controller.
-     *
-     * @param data A map containing parsed data (e.g., heart rate value, user/device IDs).
+     * Fetches current location and attaches it to sensor data before sending to n8n.
      */
-    private void sendHeartRateToN8n(Map<String, String> data) {
-        networkController.sendHeartRateTon8n(data);
+    private void attachLocationAndSend(Map<String, String> data) {
+        if (checkLocationPermissions()) {
+            locationController.fetchLastLocation(new LocationController.OnLocationReceived() {
+                @Override
+                public void onLocationReceived(Location location) {
+                    data.put("lat", String.valueOf(location.getLatitude()));
+                    data.put("lon", String.valueOf(location.getLongitude()));
+                    networkController.sendSensorData(data, getApplicationContext());
+                }
+
+                @Override
+                public void onError(String errorMessage) {
+                    Log.w(TAG, "⚠️ Could not get last location for sensor update: " + errorMessage);
+                    networkController.sendSensorData(data, getApplicationContext());
+                }
+            });
+        } else {
+            networkController.sendSensorData(data, getApplicationContext());
+        }
     }
 
 

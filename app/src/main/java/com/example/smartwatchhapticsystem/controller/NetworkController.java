@@ -3,7 +3,6 @@ package com.example.smartwatchhapticsystem.controller;
 import android.content.Context;
 import android.os.Handler;
 import android.util.Log;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
@@ -40,16 +39,13 @@ public class NetworkController {
     private final RequestQueue requestQueue;
     private final String myIp = "https://marcella-unguerdoned-ayanna.ngrok-free.dev/webhook";
     private final String n8n_CONFIG_URL =  myIp + "/monitoring-config";
-    private final String n8n_POST_URL = myIp + "/heartRate";
     private final BluetoothConnectionManager bluetoothConnectionManager;
-    private Context context;
 
     /**
      * Constructor: Initialize Retrofit and Volley
      */
 
     public NetworkController(Context context, BluetoothConnectionManager bluetoothManager) {
-        this.context = context;
         this.bluetoothConnectionManager = bluetoothManager;
 
         // Initialize Retrofit
@@ -127,189 +123,98 @@ public class NetworkController {
 
 
     /**
-     * Sends location data (latitude, longitude, and device/user IDs) to the n8n backend
-     * for SunAzimuth monitoring. If valid, triggers vibration feedback based on server response.
+     * Sends location data to the n8n backend for unified routing.
      *
      * @param locationData The LocationData object containing coordinates and identifiers.
      * @param context      The Android context used for displaying toasts and logging.
+     * @param monitoringType The type of monitoring currently active.
      */
     public void sendLocation(LocationData locationData, Context context, String monitoringType) {
-        // Step 1: Validate that all required IDs are present
+        // Step 1: Validate IDs
         if ("UnknownUser".equals(locationData.getUserId()) ||
                 "UnknownWatch".equals(locationData.getSmartWatchId()) ||
                 "UnknownAndroid".equals(locationData.getAndroidId())) {
 
-            Log.w("NetworkController", "⚠️ Location not sent. One or more IDs are unknown: " +
-                    "UserID=" + locationData.getUserId() +
-                    ", SmartWatchID=" + locationData.getSmartWatchId() +
-                    ", AndroidID=" + locationData.getAndroidId());
-
-            Toast.makeText(context, "⚠️ Cannot send location. IDs are incomplete.", Toast.LENGTH_LONG).show();
+            Log.w("NetworkController", "⚠️ Data not sent. IDs are incomplete.");
             return;
         }
 
-        // Step 2: Send location data based on monitoring type
-        Call<ResponseBody> call = null;
-        if ("SunAzimuth".equals(monitoringType)) {
-            call = api.sendSunLocation(locationData);
-        } else if ("MoonAzimuth".equals(monitoringType)) {
-            call = api.sendMoonLocation(locationData);
-        } else if ("Pollution".equals(monitoringType)) {
-            call = api.sendPollutionLocation(locationData);
-        } else if ("Temperature".equals(monitoringType)) {
-            call = api.sendTemperatureLocation(locationData);
+        // Step 2: Prepare JSON body for n8n routing script
+        JsonObject body = new JsonObject();
+        body.addProperty("userId", locationData.getUserId());
+        body.addProperty("smartWatchId", locationData.getSmartWatchId());
+        body.addProperty("androidId", locationData.getAndroidId());
+        body.addProperty("type", monitoringType);
+        body.addProperty("lat", locationData.getLat());
+        body.addProperty("lon", locationData.getLon());
+        body.addProperty("value", (String) null); // No sensor value for pure location updates
+
+        postToN8n(body, context);
+    }
+
+    /**
+     * Sends generic sensor data to n8n for routing.
+     *
+     * @param data Map containing sensor data and IDs.
+     * @param context Android context for feedback.
+     */
+    public void sendSensorData(Map<String, String> data, Context context) {
+        JsonObject body = new JsonObject();
+        for (Map.Entry<String, String> entry : data.entrySet()) {
+            body.addProperty(entry.getKey(), entry.getValue());
         }
 
-        if (call == null) {
-            Log.e("NetworkController", "❌ Invalid monitoring type: " + monitoringType);
-            Toast.makeText(context, "Invalid monitoring type.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        // Ensure mandatory fields for routing script are mapped correctly if missing
+        if (!body.has("userId") && data.containsKey("UserID")) body.addProperty("userId", data.get("UserID"));
+        if (!body.has("smartWatchId") && data.containsKey("SmartWatchID")) body.addProperty("smartWatchId", data.get("SmartWatchID"));
+        if (!body.has("androidId") && data.containsKey("AndroidID")) body.addProperty("androidId", data.get("AndroidID"));
+        if (!body.has("type") && data.containsKey("sensorType")) body.addProperty("type", data.get("sensorType"));
 
-        // Step 3: Enqueue the Retrofit call
-        call.enqueue(new Callback<ResponseBody>() {
+        postToN8n(body, context);
+    }
+
+    private void postToN8n(JsonObject body, Context context) {
+        Log.d("NetworkController", "📤 Sending to n8n: " + body.toString());
+
+        api.postUseCaseRouting(body).enqueue(new Callback<ResponseBody>() {
             @Override
             public void onResponse(@NonNull Call<ResponseBody> call, @NonNull retrofit2.Response<ResponseBody> response) {
                 if (response.isSuccessful()) {
-                    try {
-                        String responseString = response.body() != null ? response.body().string() : "";
-                        Log.d("NetworkController", "✅ Location Sent. Raw Response: " + responseString);
-
-                        // Handle empty response
-                        if (responseString == null || responseString.trim().isEmpty()) {
-                            Log.d("NetworkController", "ℹ️ Server returned empty response.");
-                            Toast.makeText(context, "Location Sent (no feedback data).", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-
-                        // Parse JSON response
-                        JsonParser parser = new JsonParser();
-                        JsonObject jsonResponse = parser.parse(responseString).getAsJsonObject();
-
-                        String message = jsonResponse.has("message") && !jsonResponse.get("message").isJsonNull()
-                                ? jsonResponse.get("message").getAsString()
-                                : "No message in response.";
-
-                        int pulses = jsonResponse.has("pulses") ? jsonResponse.get("pulses").getAsInt() : 0;
-                        int intensity = jsonResponse.has("intensity") ? jsonResponse.get("intensity").getAsInt() : 0;
-                        int duration = jsonResponse.has("duration") ? jsonResponse.get("duration").getAsInt() : 0;
-                        int interval = jsonResponse.has("interval") ? jsonResponse.get("interval").getAsInt() : 0;
-
-                        Log.d("NetworkController", "📲 Vibration Parameters: " +
-                                "Pulses=" + pulses + ", Intensity=" + intensity +
-                                ", Duration=" + duration + ", Interval=" + interval);
-
-                        Toast.makeText(context, "Location Sent: " + message, Toast.LENGTH_SHORT).show();
-
-                        if (pulses > 0) {
-                            bluetoothConnectionManager.sendVibrationCommand(intensity, pulses, duration, interval);
-                        } else {
-                            Log.d("NetworkController", "ℹ️ No vibration needed (pulses=0).");
-                        }
-
-                    } catch (Exception e) {
-                        Log.e("NetworkController", "❌ Error parsing response: " + e.getMessage());
-                        Toast.makeText(context, "Location sent, but failed to parse response.", Toast.LENGTH_SHORT).show();
-                    }
+                    handleN8nResponse(response.body());
                 } else {
-                    Log.e("NetworkController", "❌ Failed to send location. Response Code: " + response.code());
-                    Toast.makeText(context, "Failed to send location.", Toast.LENGTH_SHORT).show();
+                    Log.e("NetworkController", "❌ Failed. Code: " + response.code());
                 }
             }
 
             @Override
             public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
                 Log.e("NetworkController", "❌ Network Error: " + t.getMessage());
-                Toast.makeText(context, "Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
     }
 
+    private void handleN8nResponse(ResponseBody responseBody) {
+        try {
+            String responseString = responseBody != null ? responseBody.string() : "";
+            if (responseString.isEmpty()) return;
 
+            JsonParser parser = new JsonParser();
+            JsonObject jsonResponse = parser.parse(responseString).getAsJsonObject();
 
-    /**
-     * Sends a map of heart rate data to a n8n server for processing.
-     * Receives feedback parameters (vibration settings) from the server and triggers a vibration
-     * command via Bluetooth if the response is valid.
-     *
-     * @param data A map containing heart rate data (e.g., value, user ID, watch ID, android ID).
-     */
-    public void sendHeartRateTon8n(Map<String, String> data) {
-        // Step 1: Ensure the request queue has been initialized
-        if (requestQueue == null) {
-            Log.e("NetworkController", "❌ RequestQueue is not initialized!");
-            return;
-        }
+            int pulses = jsonResponse.has("pulses") ? jsonResponse.get("pulses").getAsInt() : 0;
+            int intensity = jsonResponse.has("intensity") ? jsonResponse.get("intensity").getAsInt() : 0;
+            int duration = jsonResponse.has("duration") ? jsonResponse.get("duration").getAsInt() : 0;
+            int interval = jsonResponse.has("interval") ? jsonResponse.get("interval").getAsInt() : 0;
 
-        // Step 2: Convert the heart rate data (Map) into a JSON object for POST body
-        JSONObject jsonBody = new JSONObject(data);
-        Log.d("NetworkController", "📤 Sending to n8n: " + jsonBody.toString());
-
-        // Step 3: Prepare a JsonObjectRequest to send the data to n8n via HTTP POST
-        final JsonObjectRequest[] jsonObjectRequest = new JsonObjectRequest[1]; // Use array to allow inner class reuse
-
-        jsonObjectRequest[0] = new JsonObjectRequest(
-                Request.Method.POST,           // HTTP method: POST
-                n8n_POST_URL,             // URL to send heart rate data to
-                jsonBody,                      // JSON body to send
-                response -> {  // Success callback
-                    Log.d("NetworkController", "✅ Response from n8n: " + response.toString());
-
-                    // Step 4: Extract vibration feedback parameters from the JSON response
-                    int intensity = response.optInt("intensity", 0);
-                    int pulses = response.optInt("pulses", 0);
-                    int duration = response.optInt("duration", 0);
-                    int interval = response.optInt("interval", 0);
-
-                    // Step 5: Trigger the smartwatch to vibrate if connection manager is available
-                    if (bluetoothConnectionManager != null) {
-                        bluetoothConnectionManager.sendVibrationCommand(intensity, pulses, duration, interval);
-                    } else {
-                        Log.e("NetworkController", "❌ BluetoothConnectionManager is null!");
-                    }
-                },
-                error -> {  // Error callback
-                    Log.e("NetworkController", "❌ Error sending to n8n: " + error.toString());
-
-                    // Log additional HTTP status if available
-                    if (error.networkResponse != null) {
-                        Log.e("NetworkController", "❌ HTTP Status Code: " + error.networkResponse.statusCode);
-                    }
-
-                    // Retry the request (custom retry method)
-                    retryRequest(jsonObjectRequest[0]);
-                }
-        ) {
-            // Step 6: Add custom HTTP headers (e.g., content type)
-            @Override
-            public Map<String, String> getHeaders() {
-                Map<String, String> headers = new HashMap<>();
-                headers.put("Content-Type", "application/json");
-                return headers;
+            if (pulses > 0) {
+                bluetoothConnectionManager.sendVibrationCommand(intensity, pulses, duration, interval);
             }
-        };
-
-        // Step 7: Set retry policy for network reliability
-        jsonObjectRequest[0].setRetryPolicy(new DefaultRetryPolicy(
-                5000,                                       // Timeout in ms
-                DefaultRetryPolicy.DEFAULT_MAX_RETRIES,    // Max retries
-                DefaultRetryPolicy.DEFAULT_BACKOFF_MULT    // Backoff multiplier
-        ));
-
-        // Step 8: Add the request to the Volley queue to send it
-        requestQueue.add(jsonObjectRequest[0]);
+        } catch (Exception e) {
+            Log.e("NetworkController", "❌ Error parsing: " + e.getMessage());
+        }
     }
 
 
-
-
-    /**
-     * Helper method to retry request after a delay
-     */
-    private void retryRequest(final JsonObjectRequest request) {
-        Log.d("NetworkController", "🔄 Retrying request in 3 seconds...");
-        new Handler().postDelayed(() -> requestQueue.add(request), 3000);
-    }
 
 
     /**
