@@ -14,7 +14,9 @@ public interface n8nApis {
     @POST("usecase-routing")
     Call<ResponseBody> postUseCaseRouting(@Body JsonObject body);
 
-    @GET("get-usecases")
+
+    //http://localhost:5678/webhook/get-sensor-types
+    @GET("get-sensor-types")
     Call<JsonArray> getUseCases();
 
 }

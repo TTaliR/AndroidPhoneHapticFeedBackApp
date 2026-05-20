@@ -293,6 +293,7 @@ public class BluetoothConnectionManager {
             try {
                 if (sensorValue != null) {
                     Double.parseDouble(sensorValue);
+                    Log.d(TAG, "✅ Sensor value is numeric: " + sensorValue);
                 }
             } catch (NumberFormatException e) {
                 // Log but don't block. This allows for non-numeric sensor states or multi-axis data (X,Y,Z).
