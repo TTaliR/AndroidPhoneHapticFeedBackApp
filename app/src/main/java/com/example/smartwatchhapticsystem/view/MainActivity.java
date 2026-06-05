@@ -31,7 +31,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 100;
     private static final int BLUETOOTH_PERMISSION_REQUEST_CODE = 101;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 102;
-
+    private static final int BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE = 103;
     // UI Elements - Time
     private TextView tvCurrentTime;
     private TextView tvCurrentDate;
@@ -278,16 +278,27 @@ public class MainActivity extends AppCompatActivity {
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     LOCATION_PERMISSION_REQUEST_CODE);
         } else {
-            requestBluetoothPermissions(); // Already granted → next
+            requestBackgroundLocationPermission(); // Already granted foreground → ask for background
         }
     }
 
     private void onAllPermissionsGranted() {
-        Log.d("Permissions", "✅ All permissions granted or handled. Starting MonitoringService...");
+        Log.d("Permissions", "✅ All permissions granted. Checking Battery Optimizations...");
         LogManager.getInstance().log("Permissions", "All permissions granted");
 
+        // Prompt to ignore battery optimization
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                Intent intent = new Intent();
+                intent.setAction(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                intent.setData(android.net.Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            }
+        }
+
         Intent serviceIntent = new Intent(this, MonitoringService.class);
-        startForegroundService(serviceIntent);  // Required for Android 8+
+        startForegroundService(serviceIntent);
     }
 
     /**
@@ -298,14 +309,33 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
-            // Continue regardless of result
             requestLocationPermissions();
-
         } else if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            // ask for Background Location
+            requestBackgroundLocationPermission();
+        } else if (requestCode == BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE) {
+            // ask for Bluetooth
             requestBluetoothPermissions();
-
         } else if (requestCode == BLUETOOTH_PERMISSION_REQUEST_CODE) {
-            onAllPermissionsGranted(); // Done
+            onAllPermissionsGranted();
+        }
+    }
+
+    private void requestBackgroundLocationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    != PackageManager.PERMISSION_GRANTED) {
+
+                // On Android 11+, this will take the user to the Settings page
+                // On Android 10, it shows a system dialog
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION},
+                        BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE);
+            } else {
+                requestBluetoothPermissions();
+            }
+        } else {
+            requestBluetoothPermissions();
         }
     }
 

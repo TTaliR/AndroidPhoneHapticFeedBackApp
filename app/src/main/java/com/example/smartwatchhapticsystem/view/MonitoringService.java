@@ -13,6 +13,7 @@ import android.location.Location;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.util.Log;
 import android.widget.Toast;
 import androidx.annotation.Nullable;
@@ -46,6 +47,7 @@ public class MonitoringService extends Service {
     private String identifier = "Android-50"; // Example : Android-42
     private long lastSensorSendTime = 0;
     private static final long SENSOR_THROTTLE_MS = 1000; // 1 second interval (1Hz) for all watch sensor data
+    private android.os.PowerManager.WakeLock wakeLock;
 
     // Cached use cases fetched from n8n
     private List<String> cachedUseCases = new ArrayList<>();
@@ -58,6 +60,12 @@ public class MonitoringService extends Service {
         // Initialize LogManager
         LogManager.getInstance().init(this);
         LogManager.getInstance().log("Service", "Monitoring service started");
+
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        if (powerManager != null) {
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SmartwatchHapticSystem:MonitoringWakeLock");
+            wakeLock.acquire();
+        }
 
         bluetoothManager = new BluetoothConnectionManager(this, identifier);
         networkController = new NetworkController(this, bluetoothManager);
@@ -487,6 +495,11 @@ public class MonitoringService extends Service {
 
         // Step 1: Stop any pending retries for reconnecting or polling
         retryHandler.removeCallbacksAndMessages(null);
+
+        // Release WakeLock
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+        }
 
         // Step 2: Disconnect from the smartwatch if connected
         if (bluetoothManager != null) {
