@@ -7,7 +7,8 @@ import android.util.Log;
 
 /**
  * BroadcastReceiver that handles the "End Monitoring" action from the notification.
- * When triggered, it stops the MonitoringService completely.
+ * When triggered, it stops the MonitoringService completely and clears the monitoring flag.
+ * This is the ONLY way to stop the persistent background service.
  */
 public class StopMonitoringReceiver extends BroadcastReceiver {
 
@@ -18,9 +19,14 @@ public class StopMonitoringReceiver extends BroadcastReceiver {
         if (ACTION_STOP_MONITORING.equals(intent.getAction())) {
             Log.d("StopMonitoringReceiver", "🛑 End Monitoring button pressed. Stopping service...");
 
+            // Clear the monitoring active flag (prevents service from auto-restarting)
+            BootReceiver.setMonitoringState(context, false);
+
             // Stop the MonitoringService
             Intent stopIntent = new Intent(context, MonitoringService.class);
             context.stopService(stopIntent);
+
+            Log.d("StopMonitoringReceiver", "✅ Monitoring stopped completely");
         }
     }
 }
