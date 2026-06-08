@@ -61,9 +61,6 @@ public class MonitoringService extends Service {
         LogManager.getInstance().init(this);
         LogManager.getInstance().log("Service", "Monitoring service started");
 
-        // Mark monitoring as active (for persistence across device reboots and system kills)
-        BootReceiver.setMonitoringState(this, true);
-
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
         if (powerManager != null) {
             wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SmartwatchHapticSystem:MonitoringWakeLock");
@@ -496,9 +493,6 @@ public class MonitoringService extends Service {
         Log.d("MonitoringService", "🔴 Service stopped");
         LogManager.getInstance().log("Service", "Monitoring service stopped");
 
-        // Mark monitoring as inactive (only when explicitly stopped)
-        BootReceiver.setMonitoringState(this, false);
-
         // Step 1: Stop any pending retries for reconnecting or polling
         retryHandler.removeCallbacksAndMessages(null);
 
@@ -533,12 +527,25 @@ public class MonitoringService extends Service {
      */
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        Log.d("MonitoringService", "📵 App closed from Recents - BUT SERVICE KEEPS RUNNING (Foreground Service)");
-        LogManager.getInstance().log("Service", "App removed from recents - service continues in background");
+        Log.d("MonitoringService", "🛑 App closed from Resents. Stopping service.");
 
-        // The service remains running as a foreground service with persistent notification
-        // User can only stop it via the "End Monitoring" button in the notification
+        // Step 1: Cancel any pending retries or scheduled background tasks
+        retryHandler.removeCallbacksAndMessages(null);
 
+        // Step 2: Disconnect from the smartwatch (if connected)
+        if (bluetoothManager != null) {
+            bluetoothManager.disconnect();
+        }
+
+        // Step 3: Stop location tracking to avoid wasting battery/resources
+        if (locationController != null) {
+            locationController.stopLocationUpdates();
+        }
+
+        // Step 4: Stop the service completely (releases system resources and shuts it down)
+        stopSelf();
+
+        // Step 5: Call superclass to ensure proper system-level handling
         super.onTaskRemoved(rootIntent);
     }
 
