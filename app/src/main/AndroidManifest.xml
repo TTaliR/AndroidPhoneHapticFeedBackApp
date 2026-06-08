@@ -36,9 +36,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
 
-    <!-- ✅ Boot Receiver Permission (for persistent background service) -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
 
 
     <!-- ✅ Allow querying of Health Connect App -->
@@ -90,15 +87,6 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.example.smartwatchhapticsystem.STOP_MONITORING" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Receiver for device boot events - restarts monitoring if it was active -->
-        <receiver
-            android:name=".view.BootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
 
